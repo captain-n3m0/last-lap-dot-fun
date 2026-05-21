@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import Navbar from "../components/Navbar";
 import Footer from "../components/Footer";
 import HeroIllustration from "../components/HeroIllustration";
+import CheckeredFlag from "../components/CheckeredFlag";
 import { Trophy, Flag, TrendingUp, Flame, Gauge, Users, Copy, Twitter, Award, Shield, Medal } from "lucide-react";
 
 function StatCard({ icon: Icon, label, value, color = "var(--purple-bright)", testid }) {
@@ -209,7 +210,7 @@ export default function Dashboard() {
         <div className="card-ll p-5" data-testid="daily-tasks-panel">
           <div className="flex items-start justify-between mb-5">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 checker-bg border border-[var(--border)] rounded" />
+              <CheckeredFlag size={44} />
               <div>
                 <div className="font-brush text-[26px] text-white leading-none">DAILY RACE TASKS</div>
                 <div className="font-pixel text-[9px] tracking-widest text-[var(--muted)] mt-1">COMPLETE TASKS AND EARN LAP POINTS</div>
