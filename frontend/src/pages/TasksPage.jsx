@@ -4,6 +4,7 @@ import { useAuth } from "../contexts/AuthContext";
 import { toast } from "sonner";
 import Navbar from "../components/Navbar";
 import Footer from "../components/Footer";
+import XLogo from "../components/XLogo";
 
 export default function TasksPage() {
   const { refreshUser } = useAuth();
@@ -57,7 +58,7 @@ export default function TasksPage() {
 
         <div className="card-ll p-5 space-y-2">
           {tasks.map((t) => {
-            const platformIcon = t.platform === "X" ? "𝕏" : t.platform === "DISCORD" ? "♣" : t.platform === "WALLET" ? "₿" : t.platform === "EMAIL" ? "✉" : "★";
+            const platformIcon = t.platform === "X" ? <XLogo size={14} /> : t.platform === "DISCORD" ? "♣" : t.platform === "WALLET" ? "₿" : t.platform === "EMAIL" ? "✉" : "★";
             const done = t.status === "completed";
             const started = t.status === "started";
             return (

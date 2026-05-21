@@ -1,5 +1,6 @@
 import { Link } from "react-router-dom";
-import { Twitter, MessageCircle, Github, Instagram, Youtube } from "lucide-react";
+import { MessageCircle, Github, Instagram, Youtube } from "lucide-react";
+import XLogo from "./XLogo";
 
 export default function Footer() {
   return (
@@ -34,7 +35,7 @@ export default function Footer() {
         <div>
           <div className="font-pixel text-[10px] tracking-widest text-white mb-4">FOLLOW US</div>
           <div className="flex items-center gap-2">
-            {[Twitter, MessageCircle, Github, Instagram, Youtube].map((Icon, i) => (
+            {[XLogo, MessageCircle, Github, Instagram, Youtube].map((Icon, i) => (
               <a key={i} href="#" className="w-9 h-9 border border-[var(--border)] flex items-center justify-center rounded hover:border-[var(--purple)] hover:bg-[var(--purple)]/10 transition" data-testid={`social-${i}`}>
                 <Icon size={14} className="text-[var(--muted)]" />
               </a>

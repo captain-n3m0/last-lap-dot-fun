@@ -5,8 +5,9 @@ import api from "../lib/api";
 import { toast } from "sonner";
 import Navbar from "../components/Navbar";
 import Footer from "../components/Footer";
-import { Trophy, Flag, TrendingUp, Flame, Gauge, Users, Copy, Twitter, Award, Shield, Medal } from "lucide-react";
+import { Trophy, Flag, TrendingUp, Flame, Gauge, Users, Copy, Award, Shield, Medal } from "lucide-react";
 import CheckeredFlag from "../components/CheckeredFlag";
+import XLogo from "../components/XLogo";
 
 function StatCard({ icon: Icon, label, value, color = "var(--purple-bright)", testid }) {
   return (
@@ -25,7 +26,7 @@ function StatCard({ icon: Icon, label, value, color = "var(--purple-bright)", te
 function TaskItem({ task, onAction, isAuthLoading }) {
   const isCompleted = task.status === "completed";
   const isStarted = task.status === "started";
-  const platformIcon = task.platform === "X" ? "𝕏" : task.platform === "DISCORD" ? "♣" : task.platform === "WALLET" ? "₿" : task.platform === "EMAIL" ? "✉" : "★";
+  const platformIcon = task.platform === "X" ? <XLogo size={14} /> : task.platform === "DISCORD" ? "♣" : task.platform === "WALLET" ? "₿" : task.platform === "EMAIL" ? "✉" : "★";
   return (
     <div className={`card-ll-inner px-4 py-3 flex items-center gap-4 ${isCompleted ? "opacity-60" : ""}`} data-testid={`task-item-${task.id}`}>
       <div className="w-9 h-9 rounded bg-black/50 border border-[var(--border)] flex items-center justify-center font-pixel text-white text-sm">
@@ -373,7 +374,7 @@ export default function Dashboard() {
             className="btn-primary-ll w-full flex items-center justify-center gap-2 py-3"
             data-testid="share-x"
           >
-            <span>SHARE ON</span> <Twitter size={14} />
+            <span>SHARE ON</span> <XLogo size={14} />
           </a>
         </div>
       </section>
