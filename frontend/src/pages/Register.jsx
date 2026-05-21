@@ -33,7 +33,7 @@ export default function Register() {
     <div className="min-h-screen flex bg-[var(--bg)]" data-testid="register-page">
       <div className="hidden lg:flex flex-1 relative border-r border-[var(--border)] overflow-hidden">
         <img
-          src="https://customer-assets.emergentagent.com/job_pit-stop-6/artifacts/g5usbfpl_art_1.png"
+          src="/hero-art.png"
           alt="LastLap riders"
           className="w-full h-full object-cover"
         />

@@ -183,7 +183,7 @@ export default function Dashboard() {
         <div className="relative rounded-lg overflow-hidden border border-[var(--border)] min-h-[360px] md:min-h-[440px]">
           {/* Background artwork with fade */}
           <img
-            src="https://customer-assets.emergentagent.com/job_pit-stop-6/artifacts/g5usbfpl_art_1.png"
+            src="/hero-art.png"
             alt="LastLap riders on Route 66"
             className="absolute inset-0 w-full h-full object-cover"
             data-testid="hero-artwork"
