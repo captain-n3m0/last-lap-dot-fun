@@ -1,7 +1,6 @@
 import { useState, useEffect } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
-import HeroIllustration from "../components/HeroIllustration";
 
 export default function Register() {
   const { register } = useAuth();
@@ -32,8 +31,12 @@ export default function Register() {
 
   return (
     <div className="min-h-screen flex bg-[var(--bg)]" data-testid="register-page">
-      <div className="hidden lg:flex flex-1 relative grain border-r border-[var(--border)]">
-        <HeroIllustration />
+      <div className="hidden lg:flex flex-1 relative border-r border-[var(--border)] overflow-hidden">
+        <img
+          src="https://customer-assets.emergentagent.com/job_pit-stop-6/artifacts/g5usbfpl_art_1.png"
+          alt="LastLap riders"
+          className="w-full h-full object-cover"
+        />
         <div className="absolute bottom-0 left-0 p-10">
           <div className="font-brush text-[72px] leading-none">
             <span className="text-white">LAST</span><span className="text-[var(--purple)]">LAP</span>

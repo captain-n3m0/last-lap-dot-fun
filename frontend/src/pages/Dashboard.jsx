@@ -5,9 +5,8 @@ import api from "../lib/api";
 import { toast } from "sonner";
 import Navbar from "../components/Navbar";
 import Footer from "../components/Footer";
-import HeroIllustration from "../components/HeroIllustration";
-import CheckeredFlag from "../components/CheckeredFlag";
 import { Trophy, Flag, TrendingUp, Flame, Gauge, Users, Copy, Twitter, Award, Shield, Medal } from "lucide-react";
+import CheckeredFlag from "../components/CheckeredFlag";
 
 function StatCard({ icon: Icon, label, value, color = "var(--purple-bright)", testid }) {
   return (
@@ -190,8 +189,13 @@ export default function Dashboard() {
               COMPLETE MISSIONS, EARN LAP POINTS,<br/>AND CLIMB THE GLOBAL GRID
             </div>
           </div>
-          <div className="relative h-[280px] md:h-[360px] rounded-lg overflow-hidden border border-[var(--border)] grain">
-            <HeroIllustration />
+          <div className="relative h-[280px] md:h-[360px] rounded-lg overflow-hidden border border-[var(--border)]">
+            <img
+              src="https://customer-assets.emergentagent.com/job_pit-stop-6/artifacts/g5usbfpl_art_1.png"
+              alt="LastLap riders on Route 66"
+              className="w-full h-full object-cover"
+              data-testid="hero-artwork"
+            />
           </div>
         </div>
       </section>
