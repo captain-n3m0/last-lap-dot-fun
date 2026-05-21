@@ -27,6 +27,9 @@ export default function Navbar() {
   };
 
   const initial = (user?.username || user?.display_name || "R").charAt(0).toUpperCase();
+  // Real photo avatar (matches Figma reference). Deterministic by username.
+  const seed = encodeURIComponent(user?.username || "rider");
+  const avatarUrl = `https://i.pravatar.cc/100?u=${seed}`;
 
   return (
     <nav className="w-full border-b border-[var(--border)] bg-[var(--bg)]/95 backdrop-blur-md sticky top-0 z-50" data-testid="main-navbar">
@@ -44,10 +47,12 @@ export default function Navbar() {
         <div className="relative" ref={menuRef}>
           <button onClick={() => setOpen(v => !v)} data-testid="profile-menu-button"
             className="flex items-center gap-3 group">
-            <div className="avatar-pixel" style={{ background: user?.avatar_color || "#8B5CF6" }}>{initial}</div>
+            <div className="w-10 h-10 rounded-full overflow-hidden border-2 border-[var(--purple)] flex-shrink-0" style={{ background: user?.avatar_color || "#8B5CF6" }}>
+              <img src={avatarUrl} alt={initial} className="w-full h-full object-cover" onError={(e) => { e.currentTarget.style.display = "none"; }} />
+            </div>
             <div className="hidden sm:block text-left">
               <div className="font-pixel text-[11px] tracking-widest text-white">@{user?.username || "rider"}</div>
-              <div className="font-pixel text-[9px] tracking-widest text-[var(--muted)]">{user?.title || "ROOKIE RACER"}</div>
+              <div className="font-pixel text-[9px] tracking-widest text-[var(--amber)]">{user?.title || "ROOKIE RACER"}</div>
             </div>
             <ChevronDown size={14} className="text-[var(--muted)] group-hover:text-white transition" />
           </button>
