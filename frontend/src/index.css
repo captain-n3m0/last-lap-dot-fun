@@ -1,4 +1,5 @@
-@import url('https://fonts.googleapis.com/css2?family=Rubik+Wet+Paint&family=VT323&family=Silkscreen:wght@400;700&family=Bungee&display=swap');
+@import url('https://fonts.cdnfonts.com/css/edo');
+@import url('https://fonts.googleapis.com/css2?family=VT323&family=Silkscreen:wght@400;700&family=Bungee&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -67,7 +68,7 @@ body {
 }
 
 /* === Typography utilities === */
-.font-brush { font-family: 'Rubik Wet Paint', cursive; letter-spacing: 0.01em; }
+.font-brush { font-family: 'Edo', 'Rubik Wet Paint', cursive; letter-spacing: 0.01em; }
 .font-pixel { font-family: 'Silkscreen', monospace; letter-spacing: 0.06em; }
 .font-mono-crt { font-family: 'VT323', monospace; }
 .font-bungee { font-family: 'Bungee', sans-serif; }
