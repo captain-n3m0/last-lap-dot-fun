@@ -54,8 +54,8 @@ function RacingHelmet({ size = 36 }) {
   );
 }
 function CrossedFlags({ size = 48 }) {
-  // The PNG has empty transparent padding, so scale it ~2x to match visual weight
-  const scale = 2;
+  // The PNG has empty transparent padding, so scale it ~2.8x to match visual weight
+  const scale = 2.8;
   return (
     <img
       src="/crossed-flags.png"
