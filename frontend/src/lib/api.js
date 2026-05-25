@@ -1,6 +1,8 @@
 import axios from "axios";
 
-const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
+// When REACT_APP_BACKEND_URL is empty, use relative paths (same-origin deployment).
+// When set (e.g. https://api.yourdomain.com), use it as the base.
+const BACKEND_URL = (process.env.REACT_APP_BACKEND_URL || "").replace(/\/$/, "");
 export const API = `${BACKEND_URL}/api`;
 
 const api = axios.create({ baseURL: API });
