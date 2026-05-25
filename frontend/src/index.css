@@ -215,6 +215,90 @@ body {
     background-position: 0 0, 0 6px, 6px -6px, -6px 0px;
 }
 
+/* Cyber frame — angular clipped corners with purple glow border */
+.cyber-frame {
+    position: relative;
+    background: var(--purple);
+    padding: 2px;
+    clip-path: polygon(
+        24px 0,
+        calc(100% - 8px) 0,
+        100% 8px,
+        100% calc(100% - 24px),
+        calc(100% - 24px) 100%,
+        8px 100%,
+        0 calc(100% - 8px),
+        0 24px
+    );
+    filter: drop-shadow(0 0 18px rgba(139, 92, 246, 0.45));
+}
+.cyber-frame-inner {
+    background: var(--bg-card);
+    clip-path: polygon(
+        23px 0,
+        calc(100% - 7px) 0,
+        100% 7px,
+        100% calc(100% - 23px),
+        calc(100% - 23px) 100%,
+        7px 100%,
+        0 calc(100% - 7px),
+        0 23px
+    );
+}
+
+/* Cyber button — sharp-cut top-left & bottom-right corners */
+.btn-cyber {
+    clip-path: polygon(
+        12px 0,
+        100% 0,
+        100% calc(100% - 12px),
+        calc(100% - 12px) 100%,
+        0 100%,
+        0 12px
+    );
+    transition: filter 0.15s ease, transform 0.1s ease;
+}
+.btn-cyber:hover { filter: brightness(1.1); }
+.btn-cyber:active { transform: translateY(1px); }
+
+.btn-cyber-outline {
+    position: relative;
+    background: var(--border);
+    padding: 1.5px;
+    clip-path: polygon(
+        12px 0,
+        100% 0,
+        100% calc(100% - 12px),
+        calc(100% - 12px) 100%,
+        0 100%,
+        0 12px
+    );
+}
+.btn-cyber-outline:hover { background: var(--purple); }
+.btn-cyber-outline-inner {
+    background: var(--bg-card);
+    clip-path: polygon(
+        11px 0,
+        100% 0,
+        100% calc(100% - 11px),
+        calc(100% - 11px) 100%,
+        0 100%,
+        0 11px
+    );
+}
+
+/* Corner brackets — small L-shapes in the inner corners */
+.corner-bracket {
+    position: absolute;
+    width: 24px;
+    height: 24px;
+    border-color: var(--purple-bright);
+}
+.corner-bracket.tl { top: 4px; left: 4px; border-top: 1.5px solid; border-left: 1.5px solid; }
+.corner-bracket.tr { top: 4px; right: 4px; border-top: 1.5px solid; border-right: 1.5px solid; }
+.corner-bracket.bl { bottom: 4px; left: 4px; border-bottom: 1.5px solid; border-left: 1.5px solid; }
+.corner-bracket.br { bottom: 4px; right: 4px; border-bottom: 1.5px solid; border-right: 1.5px solid; }
+
 /* Avatar circle */
 .avatar-pixel {
     width: 32px;
