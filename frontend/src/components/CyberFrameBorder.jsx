@@ -1,9 +1,8 @@
 /**
- * SVG-based cyber frame that exactly matches the reference:
- *  - Thin purple stroked outline
- *  - Top-right & bottom-left big diagonal notch cuts (~40px)
- *  - Top-left & bottom-right small inner accent ticks
- *  - Renders inside any container via 100% width/height
+ * Cyber frame border — refined version matching reference exactly:
+ *  - Single purple stroked outline
+ *  - Top-right & bottom-left diagonal notch cuts
+ *  - Inner L-bracket accent on every corner (tight, hugging the geometry)
  */
 export default function CyberFrameBorder() {
   return (
@@ -15,8 +14,8 @@ export default function CyberFrameBorder() {
       aria-hidden="true"
     >
       <defs>
-        <filter id="purpleGlow" x="-10%" y="-10%" width="120%" height="120%">
-          <feGaussianBlur stdDeviation="3" result="b" />
+        <filter id="purpleGlow2" x="-10%" y="-10%" width="120%" height="120%">
+          <feGaussianBlur stdDeviation="4" result="b" />
           <feMerge>
             <feMergeNode in="b" />
             <feMergeNode in="SourceGraphic" />
@@ -24,49 +23,56 @@ export default function CyberFrameBorder() {
         </filter>
       </defs>
 
-      {/* Outer frame — single stroked path */}
+      {/* Outer frame */}
       <path
-        d="
-          M 4 4
-          L 956 4
-          L 996 44
-          L 996 1196
-          L 44 1196
-          L 4 1156
-          Z
-        "
+        d="M 6 6 L 950 6 L 994 50 L 994 1194 L 50 1194 L 6 1150 Z"
         stroke="#8B5CF6"
-        strokeWidth="3"
+        strokeWidth="3.5"
         vectorEffect="non-scaling-stroke"
-        filter="url(#purpleGlow)"
+        filter="url(#purpleGlow2)"
       />
 
-      {/* Top-left inner accent — small angled tick */}
+      {/* Top-left corner — inner L bracket */}
       <path
-        d="M 4 60 L 4 14 L 50 14"
+        d="M 22 70 L 22 22 L 70 22"
         stroke="#A78BFA"
-        strokeWidth="2"
+        strokeWidth="2.5"
         vectorEffect="non-scaling-stroke"
       />
-      {/* Top-right inner accent — mirrors the notch */}
+
+      {/* Top-right corner — inner accent following the notch */}
       <path
-        d="M 946 14 L 986 54 L 986 100"
+        d="M 920 22 L 962 22 L 978 38"
         stroke="#A78BFA"
-        strokeWidth="2"
+        strokeWidth="2.5"
         vectorEffect="non-scaling-stroke"
       />
-      {/* Bottom-left inner accent */}
       <path
-        d="M 14 1100 L 14 1146 L 54 1186"
+        d="M 978 64 L 978 100"
         stroke="#A78BFA"
-        strokeWidth="2"
+        strokeWidth="2.5"
         vectorEffect="non-scaling-stroke"
       />
-      {/* Bottom-right inner accent */}
+
+      {/* Bottom-left corner — inner accent following the notch */}
       <path
-        d="M 950 1186 L 986 1186 L 986 1140"
+        d="M 22 1100 L 22 1162 L 38 1178"
         stroke="#A78BFA"
-        strokeWidth="2"
+        strokeWidth="2.5"
+        vectorEffect="non-scaling-stroke"
+      />
+      <path
+        d="M 64 1178 L 80 1178"
+        stroke="#A78BFA"
+        strokeWidth="2.5"
+        vectorEffect="non-scaling-stroke"
+      />
+
+      {/* Bottom-right corner — inner L bracket */}
+      <path
+        d="M 930 1178 L 978 1178 L 978 1130"
+        stroke="#A78BFA"
+        strokeWidth="2.5"
         vectorEffect="non-scaling-stroke"
       />
     </svg>
