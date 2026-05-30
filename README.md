@@ -153,20 +153,19 @@ If your Hostinger plan only supports static files / PHP:
 
 ## 5. First login
 
-After deployment, log in with the admin/demo credentials you set in
-`backend/.env`. The "Seed" routine in `backend/server.py` auto-creates the
-admin user, the demo `riderghost` user, 8 daily tasks, and 25 fake racers
-for the leaderboard the first time the backend starts.
+After deployment, log in with the admin credentials you set in
+`backend/.env`. The "Seed" routine in `backend/server.py` only auto-creates the
+admin user the first time the backend starts. Tasks and leaderboard entries
+come from real data in your database.
 
 ---
 
 ## 6. What to change before going public
 
 - [ ] `JWT_SECRET` — must be a long random string
-- [ ] `ADMIN_PASSWORD` / `DEMO_PASSWORD` — change from the example values
+- [ ] `ADMIN_PASSWORD` — change from the example values
 - [ ] `CORS_ORIGINS` — set to your real domain (not `*`)
 - [ ] MongoDB Atlas IP allowlist — restrict to your server's IP
-- [ ] Optionally delete the 25 seeded fake racers from your Mongo collection once you have real users
 
 ---
 

@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
+import api from "../lib/api";
 import WalletButton from "../components/WalletButton";
 import XLogo from "../components/XLogo";
 import CyberFrameBorder, { CyberFrameFill, CyberFrameStroke } from "../components/CyberFrameBorder";
@@ -92,6 +93,7 @@ export default function Login() {
   const [password, setPassword] = useState("");
   const [err, setErr] = useState("");
   const [loading, setLoading] = useState(false);
+  const [globalStats, setGlobalStats] = useState(null);
 
   const submit = async (e) => {
     e.preventDefault();
@@ -106,6 +108,18 @@ export default function Login() {
   const handleXLogin = () => {
     toast("X (TWITTER) OAUTH COMING SOON — USE EMAIL OR WALLET", { duration: 3500 });
   };
+
+  useEffect(() => {
+    let mounted = true;
+    api.get("/stats/global")
+      .then(({ data }) => {
+        if (mounted) setGlobalStats(data);
+      })
+      .catch(() => {});
+    return () => { mounted = false; };
+  }, []);
+
+  const formatStatValue = (value) => (value == null ? "—" : Number(value).toLocaleString());
 
   return (
     <div className="h-screen overflow-hidden relative bg-[var(--bg)]" data-testid="login-page">
@@ -215,10 +229,6 @@ export default function Login() {
                     <button disabled={loading} className="btn-cyber bg-[var(--purple)] hover:bg-[var(--purple-bright)] w-full py-3 text-white font-pixel text-[12px]" data-testid="login-submit">
                       {loading ? "STARTING ENGINE..." : "ENTER THE TRACK"}
                     </button>
-                    <div className="mt-3 p-2.5 bg-black/40 border border-[var(--border)] rounded">
-                      <div className="label-ll mb-1">DEMO ACCESS</div>
-                      <div className="font-mono-crt text-[11px] text-[var(--muted)]">riderghost@lastlap.com / Demo2025!</div>
-                    </div>
                   </form>
                 )}
 
@@ -242,10 +252,10 @@ export default function Login() {
         <div className="px-8 lg:px-12 pb-4 flex-shrink-0">
           <div className="backdrop-blur-md bg-black/45 border border-[var(--border)] rounded-lg p-3.5 max-w-[820px]">
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-              <Stat icon={Users} value="12.5K+" label="Riders" color="#A78BFA" />
-              <Stat icon={Flame} value="2.4M+" label="LP Burned" color="#EF4444" />
-              <Stat icon={Trophy} value="4,892" label="Races Completed" color="#F59E0B" />
-              <Stat icon={Globe} value="70+" label="Countries" color="#A78BFA" />
+              <Stat icon={Users} value={formatStatValue(globalStats?.total_riders)} label="Riders" color="#A78BFA" />
+              <Stat icon={Flame} value={formatStatValue(globalStats?.total_lp)} label="LP Earned" color="#EF4444" />
+              <Stat icon={Trophy} value={formatStatValue(globalStats?.total_tasks_completed)} label="Tasks Completed" color="#F59E0B" />
+              <Stat icon={Globe} value={formatStatValue(globalStats?.active_racers)} label="Active Racers" color="#A78BFA" />
             </div>
           </div>
         </div>

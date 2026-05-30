@@ -446,8 +446,9 @@ async def complete_task(task_id: str, current=Depends(get_current_user)):
 # --- Leaderboard ---
 @api_router.get("/leaderboard")
 async def leaderboard(limit: int = 10, current=Depends(get_current_user)):
+    user_filter = {"is_bot": {"$ne": True}}
     users = await db.users.find(
-        {}, {"_id": 0, "password_hash": 0, "email": 0}
+        user_filter, {"_id": 0, "password_hash": 0, "email": 0}
     ).sort("lap_points", -1).to_list(1000)
     out = []
     your_rank = None
@@ -476,13 +477,43 @@ async def leaderboard(limit: int = 10, current=Depends(get_current_user)):
     }
 
 
+# --- Global Stats ---
+@api_router.get("/stats/global")
+async def global_stats():
+    user_filter = {"is_bot": {"$ne": True}}
+    total_riders = await db.users.count_documents(user_filter)
+    totals = await db.users.aggregate([
+        {"$match": user_filter},
+        {"$group": {
+            "_id": None,
+            "lap_points": {"$sum": {"$ifNull": ["$lap_points", 0]}},
+            "tasks_completed": {"$sum": {"$ifNull": ["$tasks_completed", 0]}},
+        }},
+    ]).to_list(1)
+    totals = totals[0] if totals else {}
+    active_racers = await db.users.count_documents({
+        **user_filter,
+        "tasks_completed": {"$gt": 0},
+    })
+    return {
+        "total_riders": total_riders,
+        "total_lp": totals.get("lap_points", 0),
+        "total_tasks_completed": totals.get("tasks_completed", 0),
+        "active_racers": active_racers,
+    }
+
+
 # --- Stats ---
 @api_router.get("/users/me/stats")
 async def my_stats(current=Depends(get_current_user)):
-    users = await db.users.find({}, {"_id": 0, "id": 1, "lap_points": 1}).sort("lap_points", -1).to_list(1000)
+    user_filter = {"is_bot": {"$ne": True}}
+    users = await db.users.find(user_filter, {"_id": 0, "id": 1, "lap_points": 1}).sort("lap_points", -1).to_list(1000)
     rank = next((i + 1 for i, u in enumerate(users) if u["id"] == current["id"]), len(users))
     total = len(users) or 1
     top_pct = max(1, int((rank / total) * 100))
+    tasks_goal = await db.tasks.count_documents({"is_active": True})
+    if tasks_goal == 0:
+        tasks_goal = await db.tasks.count_documents({})
     referrals_count = await db.referrals.count_documents({"owner_id": current["id"], "status": "verified"})
     pending_count = await db.referrals.count_documents({"owner_id": current["id"], "status": "pending"})
     total_earned = await db.referrals.aggregate([
@@ -491,7 +522,7 @@ async def my_stats(current=Depends(get_current_user)):
     ]).to_list(1)
     return {
         "tasks_completed": current.get("tasks_completed", 0),
-        "tasks_goal": 50,
+        "tasks_goal": tasks_goal,
         "lap_points": current.get("lap_points", 0),
         "current_rank": rank,
         "top_percentile": top_pct,
@@ -541,58 +572,7 @@ async def root():
 
 
 # --- Seeding ---
-DEMO_TASKS = [
-    {"title": "Follow LastLap on X", "description": "Stay updated, lead the race", "platform": "X", "reward_lp": 100, "external_url": "https://x.com/intent/follow?screen_name=lastlap"},
-    {"title": "Repost the Launch Tweet", "description": "Spread the word, fuel the hype", "platform": "X", "reward_lp": 150, "external_url": "https://x.com"},
-    {"title": "Join the Discord Server", "description": "Meet the crew, talk shop", "platform": "DISCORD", "reward_lp": 200, "external_url": "https://discord.com"},
-    {"title": "Connect Your Wallet", "description": "Gear up for on-chain rewards", "platform": "WALLET", "reward_lp": 250, "external_url": "#"},
-    {"title": "Refer a Rider", "description": "Bring a friend, climb together", "platform": "REFERRAL", "reward_lp": 300, "external_url": "#"},
-    {"title": "Complete Your Profile", "description": "Tell the grid who you are", "platform": "PROFILE", "reward_lp": 100, "external_url": "#"},
-    {"title": "Tag 3 Friends in Comments", "description": "Loud and proud, on the timeline", "platform": "X", "reward_lp": 150, "external_url": "https://x.com"},
-    {"title": "Subscribe to Newsletter", "description": "Pit-lane updates direct to inbox", "platform": "EMAIL", "reward_lp": 100, "external_url": "#"},
-]
-
-FAKE_RACERS = [
-    ("rider_alpha", 112832, 45, 89, "#EF4444"),
-    ("nitro_queen", 98450, 42, 67, "#EC4899"),
-    ("turbo_lord", 87120, 39, 54, "#F59E0B"),
-    ("shadowlap", 76340, 36, 48, "#8B5CF6"),
-    ("apex_hunter", 65890, 33, 41, "#3B82F6"),
-    ("ghost_drift", 58220, 30, 38, "#10B981"),
-    ("nova_blaze", 49870, 28, 32, "#EF4444"),
-    ("ironwheel", 43120, 25, 28, "#F59E0B"),
-    ("crimson_v8", 38450, 23, 25, "#EC4899"),
-    ("redline_x", 32890, 21, 22, "#8B5CF6"),
-    ("road_warden", 28760, 19, 20, "#3B82F6"),
-    ("steel_paws", 24320, 17, 18, "#10B981"),
-    ("blackmoon", 21850, 15, 16, "#EF4444"),
-    ("dust_demon", 18920, 13, 14, "#F59E0B"),
-    ("vortex_kid", 16480, 12, 13, "#EC4899"),
-    ("lap_ninja", 14250, 11, 12, "#8B5CF6"),
-    ("octane_jr", 12100, 10, 11, "#3B82F6"),
-    ("fuel_witch", 10550, 9, 10, "#10B981"),
-    ("smoke_signal", 8970, 8, 9, "#EF4444"),
-    ("piston_pat", 7820, 7, 8, "#F59E0B"),
-    ("midnite_rip", 6650, 6, 7, "#EC4899"),
-    ("ash_runner", 5490, 5, 6, "#8B5CF6"),
-    ("grid_grit", 4320, 4, 5, "#3B82F6"),
-    ("late_brake", 3450, 3, 4, "#10B981"),
-    ("first_corner", 2890, 2, 3, "#EF4444"),
-]
-
-
 async def seed():
-    # Tasks
-    if await db.tasks.count_documents({}) == 0:
-        for i, t in enumerate(DEMO_TASKS):
-            await db.tasks.insert_one({
-                "id": str(uuid.uuid4()),
-                "order": i,
-                "is_active": True,
-                **t,
-            })
-        logger.info("Seeded %d tasks", len(DEMO_TASKS))
-
     # Indexes
     # Indexes (sparse for nullable fields like email & wallet_address)
     try:
@@ -606,33 +586,6 @@ async def seed():
     await db.tasks.create_index("id", unique=True)
     await db.user_tasks.create_index([("user_id", 1), ("task_id", 1)], unique=True)
     await db.wallet_nonces.create_index("nonce")
-
-    # Demo user (riderghost)
-    demo_email = os.environ.get("DEMO_EMAIL", "riderghost@lastlap.com")
-    demo_pw = os.environ.get("DEMO_PASSWORD", "Demo2025!")
-    existing_demo = await db.users.find_one({"email": demo_email})
-    if not existing_demo:
-        await db.users.insert_one({
-            "id": str(uuid.uuid4()),
-            "email": demo_email,
-            "username": "riderghost",
-            "password_hash": hash_password(demo_pw),
-            "display_name": "riderghost",
-            "role": "ROOKIE RIDER",
-            "title": "ROOKIE RACER",
-            "lap_points": 2450,
-            "tasks_completed": 18,
-            "daily_streak": 4,
-            "referral_code": "LAST-8842",
-            "referred_by": None,
-            "avatar_color": "#EF4444",
-            "joined_on": datetime(2024, 5, 14, tzinfo=timezone.utc).isoformat(),
-        })
-        logger.info("Seeded demo user %s", demo_email)
-    else:
-        # Ensure password matches if env changed
-        if not verify_password(demo_pw, existing_demo["password_hash"]):
-            await db.users.update_one({"email": demo_email}, {"$set": {"password_hash": hash_password(demo_pw)}})
 
     # Admin
     admin_email = os.environ.get("ADMIN_EMAIL", "admin@lastlap.com")
@@ -661,33 +614,6 @@ async def seed():
         })
     elif not verify_password(admin_pw, existing_admin["password_hash"]):
         await db.users.update_one({"email": admin_email}, {"$set": {"password_hash": hash_password(admin_pw)}})
-
-    # Fake racers (only seed once)
-    if await db.users.count_documents({}) < 10:
-        for name, lp, tasks_done, streak, color in FAKE_RACERS:
-            while True:
-                code = gen_referral_code()
-                if not await db.users.find_one({"referral_code": code}):
-                    break
-            await db.users.insert_one({
-                "id": str(uuid.uuid4()),
-                "email": f"{name}@bots.lastlap.com",
-                "username": name,
-                "password_hash": hash_password(uuid.uuid4().hex),
-                "display_name": name,
-                "role": "PRO RIDER" if lp > 50000 else ("VETERAN" if lp > 10000 else "ROOKIE RIDER"),
-                "title": "GHOST FLEET" if lp > 50000 else "ROOKIE RACER",
-                "lap_points": lp,
-                "tasks_completed": tasks_done,
-                "daily_streak": streak,
-                "referral_code": code,
-                "referred_by": None,
-                "avatar_color": color,
-                "joined_on": (datetime.now(timezone.utc) - timedelta(days=random.randint(30, 365))).isoformat(),
-                "is_bot": True,
-            })
-        logger.info("Seeded %d fake racers", len(FAKE_RACERS))
-
 
 @app.on_event("startup")
 async def on_startup():

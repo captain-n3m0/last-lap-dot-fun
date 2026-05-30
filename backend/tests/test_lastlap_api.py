@@ -7,8 +7,7 @@ import requests
 BASE_URL = os.environ.get("REACT_APP_BACKEND_URL", "http://localhost:8001").rstrip("/")
 API = f"{BASE_URL}/api"
 
-DEMO_EMAIL = "riderghost@lastlap.com"
-DEMO_PASS = "Demo2025!"
+TEST_PASSWORD = "Test1234!"
 
 
 @pytest.fixture(scope="session")
@@ -19,15 +18,39 @@ def session():
 
 
 @pytest.fixture(scope="session")
-def demo_token(session):
-    r = session.post(f"{API}/auth/login", json={"email": DEMO_EMAIL, "password": DEMO_PASS}, timeout=30)
-    assert r.status_code == 200, f"demo login failed: {r.status_code} {r.text}"
+def registered_user(session):
+    suffix = uuid.uuid4().hex[:8]
+    email = f"test_{suffix}@lastlap.com"
+    username = f"test_{suffix}"
+    r = session.post(
+        f"{API}/auth/register",
+        json={"email": email, "password": TEST_PASSWORD, "username": username},
+        timeout=30,
+    )
+    assert r.status_code == 200, r.text
+    data = r.json()
+    return {
+        "email": email,
+        "username": username,
+        "password": TEST_PASSWORD,
+        "referral_code": data["user"]["referral_code"],
+    }
+
+
+@pytest.fixture(scope="session")
+def user_token(session, registered_user):
+    r = session.post(
+        f"{API}/auth/login",
+        json={"email": registered_user["email"], "password": registered_user["password"]},
+        timeout=30,
+    )
+    assert r.status_code == 200, f"login failed: {r.status_code} {r.text}"
     return r.json()["access_token"]
 
 
 @pytest.fixture(scope="session")
-def demo_headers(demo_token):
-    return {"Authorization": f"Bearer {demo_token}", "Content-Type": "application/json"}
+def auth_headers(user_token):
+    return {"Authorization": f"Bearer {user_token}", "Content-Type": "application/json"}
 
 
 # --- Health ---
@@ -39,26 +62,34 @@ def test_health(session):
 
 # --- Auth ---
 class TestAuth:
-    def test_login_success(self, session):
-        r = session.post(f"{API}/auth/login", json={"email": DEMO_EMAIL, "password": DEMO_PASS}, timeout=30)
+    def test_login_success(self, session, registered_user):
+        r = session.post(
+            f"{API}/auth/login",
+            json={"email": registered_user["email"], "password": registered_user["password"]},
+            timeout=30,
+        )
         assert r.status_code == 200
         data = r.json()
         assert "access_token" in data and isinstance(data["access_token"], str) and len(data["access_token"]) > 20
-        assert data["user"]["email"] == DEMO_EMAIL
-        assert data["user"]["username"] == "riderghost"
-        assert data["user"]["referral_code"] == "LAST-8842"
+        assert data["user"]["email"] == registered_user["email"]
+        assert data["user"]["username"] == registered_user["username"]
+        assert data["user"]["referral_code"] == registered_user["referral_code"]
         assert "password_hash" not in data["user"]
         assert "_id" not in data["user"]
 
-    def test_login_invalid(self, session):
-        r = session.post(f"{API}/auth/login", json={"email": DEMO_EMAIL, "password": "wrong"}, timeout=15)
+    def test_login_invalid(self, session, registered_user):
+        r = session.post(
+            f"{API}/auth/login",
+            json={"email": registered_user["email"], "password": "wrong"},
+            timeout=15,
+        )
         assert r.status_code == 401
 
-    def test_me_with_bearer(self, session, demo_headers):
-        r = session.get(f"{API}/auth/me", headers=demo_headers, timeout=15)
+    def test_me_with_bearer(self, session, auth_headers, registered_user):
+        r = session.get(f"{API}/auth/me", headers=auth_headers, timeout=15)
         assert r.status_code == 200
         d = r.json()
-        assert d["email"] == DEMO_EMAIL
+        assert d["email"] == registered_user["email"]
         assert "password_hash" not in d
 
     def test_me_no_token(self, session):
@@ -70,7 +101,7 @@ class TestAuth:
         email = f"test_{suffix}@lastlap.com"
         username = f"test_{suffix}"
         r = session.post(f"{API}/auth/register", json={
-            "email": email, "password": "Test1234!", "username": username
+            "email": email, "password": TEST_PASSWORD, "username": username
         }, timeout=30)
         assert r.status_code == 200, r.text
         data = r.json()
@@ -78,41 +109,45 @@ class TestAuth:
         assert data["user"]["referral_code"].startswith("LAST-")
         assert "access_token" in data
 
-    def test_register_duplicate_email(self, session):
+    def test_register_duplicate_email(self, session, registered_user):
         r = session.post(f"{API}/auth/register", json={
-            "email": DEMO_EMAIL, "password": "Test1234!", "username": f"u{uuid.uuid4().hex[:6]}"
+            "email": registered_user["email"],
+            "password": TEST_PASSWORD,
+            "username": f"u{uuid.uuid4().hex[:6]}",
         }, timeout=15)
         assert r.status_code == 400
 
-    def test_register_with_referral_awards_referrer(self, session, demo_headers):
-        stats_before = session.get(f"{API}/users/me/stats", headers=demo_headers, timeout=15).json()
+    def test_register_with_referral_awards_referrer(self, session, auth_headers, registered_user):
+        stats_before = session.get(f"{API}/users/me/stats", headers=auth_headers, timeout=15).json()
         lp_before = stats_before["lap_points"]
         suffix = uuid.uuid4().hex[:8]
         r = session.post(f"{API}/auth/register", json={
             "email": f"ref_{suffix}@lastlap.com",
-            "password": "Test1234!",
+            "password": TEST_PASSWORD,
             "username": f"ref_{suffix}",
-            "referral_code": "LAST-8842",
+            "referral_code": registered_user["referral_code"],
         }, timeout=20)
         assert r.status_code == 200
-        stats_after = session.get(f"{API}/users/me/stats", headers=demo_headers, timeout=15).json()
+        stats_after = session.get(f"{API}/users/me/stats", headers=auth_headers, timeout=15).json()
         assert stats_after["lap_points"] == lp_before + 50, "Referrer should gain 50 LP"
 
 
 # --- Tasks ---
 class TestTasks:
-    def test_list_tasks(self, session, demo_headers):
-        r = session.get(f"{API}/tasks", headers=demo_headers, timeout=15)
+    def test_list_tasks(self, session, auth_headers):
+        r = session.get(f"{API}/tasks", headers=auth_headers, timeout=15)
         assert r.status_code == 200
         tasks = r.json()
-        assert isinstance(tasks, list) and len(tasks) == 8
+        assert isinstance(tasks, list)
+        if not tasks:
+            pytest.skip("No tasks configured")
         t0 = tasks[0]
         for k in ("id", "title", "description", "platform", "reward_lp", "status"):
             assert k in t0
         assert t0["status"] in ("available", "started", "completed")
 
-    def test_reset_timer(self, session, demo_headers):
-        r = session.get(f"{API}/tasks/reset-timer", headers=demo_headers, timeout=15)
+    def test_reset_timer(self, session, auth_headers):
+        r = session.get(f"{API}/tasks/reset-timer", headers=auth_headers, timeout=15)
         assert r.status_code == 200
         secs = r.json()["seconds"]
         assert isinstance(secs, int) and 0 < secs <= 86400
@@ -130,8 +165,11 @@ class TestTasks:
         hdr = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
 
         tasks = session.get(f"{API}/tasks", headers=hdr, timeout=15).json()
+        if not tasks:
+            pytest.skip("No tasks configured")
         available = [t for t in tasks if t["status"] == "available"]
-        assert available, "Should have available tasks"
+        if not available:
+            pytest.skip("No available tasks")
         task = available[0]
         tid = task["id"]
         reward = task["reward_lp"]
@@ -162,15 +200,15 @@ class TestTasks:
         t_after = next(t for t in tasks_after if t["id"] == tid)
         assert t_after["status"] == "completed"
 
-    def test_start_invalid_task(self, session, demo_headers):
-        r = session.post(f"{API}/tasks/does-not-exist/start", headers=demo_headers, timeout=15)
+    def test_start_invalid_task(self, session, auth_headers):
+        r = session.post(f"{API}/tasks/does-not-exist/start", headers=auth_headers, timeout=15)
         assert r.status_code == 404
 
 
 # --- Leaderboard ---
 class TestLeaderboard:
-    def test_leaderboard(self, session, demo_headers):
-        r = session.get(f"{API}/leaderboard?limit=10", headers=demo_headers, timeout=15)
+    def test_leaderboard(self, session, auth_headers, registered_user):
+        r = session.get(f"{API}/leaderboard?limit=10", headers=auth_headers, timeout=15)
         assert r.status_code == 200
         d = r.json()
         assert "top" in d and "you" in d and "your_rank" in d
@@ -178,16 +216,16 @@ class TestLeaderboard:
         # sorted desc by lap_points
         lps = [e["lap_points"] for e in d["top"]]
         assert lps == sorted(lps, reverse=True)
-        # 25 fake racers + at least demo + admin
-        assert d["total_racers"] >= 26
-        assert d["you"]["username"] == "riderghost"
+        # admin + at least one real user
+        assert d["total_racers"] >= 2
+        assert d["you"]["username"] == registered_user["username"]
         assert d["your_rank"] == d["you"]["rank"]
 
 
 # --- Stats ---
 class TestStats:
-    def test_stats_shape(self, session, demo_headers):
-        r = session.get(f"{API}/users/me/stats", headers=demo_headers, timeout=15)
+    def test_stats_shape(self, session, auth_headers):
+        r = session.get(f"{API}/users/me/stats", headers=auth_headers, timeout=15)
         assert r.status_code == 200
         d = r.json()
         for k in ("tasks_completed", "lap_points", "current_rank", "top_percentile", "daily_streak", "joined_on", "referrals_count"):
@@ -198,11 +236,11 @@ class TestStats:
 
 # --- Referrals ---
 class TestReferrals:
-    def test_referrals_me(self, session, demo_headers):
-        r = session.get(f"{API}/referrals/me", headers=demo_headers, timeout=15)
+    def test_referrals_me(self, session, auth_headers, registered_user):
+        r = session.get(f"{API}/referrals/me", headers=auth_headers, timeout=15)
         assert r.status_code == 200
         d = r.json()
-        assert d["referral_code"] == "LAST-8842"
-        assert "register?ref=LAST-8842" in d["referral_link"]
+        assert d["referral_code"] == registered_user["referral_code"]
+        assert f"register?ref={registered_user['referral_code']}" in d["referral_link"]
         for k in ("crew_invites", "pending_invites", "total_earned"):
             assert k in d and isinstance(d[k], int)

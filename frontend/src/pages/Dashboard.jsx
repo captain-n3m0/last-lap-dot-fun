@@ -194,8 +194,11 @@ export default function Dashboard() {
     ? new Date(stats.joined_on).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }).toUpperCase()
     : "—";
 
-  const tasksGoal = stats?.tasks_goal || 50;
-  const tasksProgress = Math.min(100, ((stats?.tasks_completed || 0) / tasksGoal) * 100);
+  const tasksGoal = stats?.tasks_goal ?? 0;
+  const tasksProgress = tasksGoal > 0
+    ? Math.min(100, ((stats?.tasks_completed || 0) / tasksGoal) * 100)
+    : 0;
+  const tasksGoalLabel = tasksGoal > 0 ? tasksGoal : "—";
 
   return (
     <div className="min-h-screen bg-[var(--bg)]" data-testid="dashboard-page">
@@ -305,7 +308,7 @@ export default function Dashboard() {
           <div className="grid grid-cols-3 gap-3 mb-3">
             <div className="card-ll-inner p-4">
               <div className="label-ll mb-2">TASKS COMPLETED</div>
-              <div className="stat-num">{stats?.tasks_completed ?? 0}<span className="text-[var(--muted)] text-[14px]"> /{tasksGoal}</span></div>
+              <div className="stat-num">{stats?.tasks_completed ?? 0}<span className="text-[var(--muted)] text-[14px]"> /{tasksGoalLabel}</span></div>
               <div className="w-full bg-[var(--border)] h-1.5 rounded mt-2 overflow-hidden">
                 <div className="bg-[var(--purple)] h-full" style={{ width: `${tasksProgress}%` }} />
               </div>
