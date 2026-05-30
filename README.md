@@ -164,6 +164,7 @@ come from real data in your database.
 
 - [ ] `JWT_SECRET` — must be a long random string
 - [ ] `ADMIN_PASSWORD` — change from the example values
+- [ ] `RESEND_API_KEY` / `EMAIL_FROM` — required for OTP email delivery
 - [ ] `CORS_ORIGINS` — set to your real domain (not `*`)
 - [ ] MongoDB Atlas IP allowlist — restrict to your server's IP
 

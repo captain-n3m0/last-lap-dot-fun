@@ -10,10 +10,11 @@ import uuid
 import random
 import string
 from datetime import datetime, timezone, timedelta
-from typing import List, Optional
+from typing import List, Optional, Union
 
 import bcrypt
 import jwt
+import requests
 from fastapi import FastAPI, APIRouter, HTTPException, Depends, Request, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from starlette.middleware.cors import CORSMiddleware
@@ -24,6 +25,14 @@ from pydantic import BaseModel, Field, EmailStr
 # --- Config ---
 JWT_ALGORITHM = "HS256"
 JWT_EXP_HOURS = 24 * 7  # 7 days for SPA convenience
+
+OTP_ENABLED = os.environ.get("OTP_ENABLED", "true").lower() == "true"
+OTP_TTL_MINUTES = int(os.environ.get("OTP_TTL_MINUTES", "10"))
+OTP_RESEND_SECONDS = int(os.environ.get("OTP_RESEND_SECONDS", "60"))
+OTP_MAX_ATTEMPTS = int(os.environ.get("OTP_MAX_ATTEMPTS", "5"))
+RESEND_API_KEY = os.environ.get("RESEND_API_KEY", "")
+EMAIL_FROM = os.environ.get("EMAIL_FROM", "no-reply@lastlap.com")
+OTP_DEBUG = os.environ.get("OTP_DEBUG", "").lower() == "true" or not RESEND_API_KEY
 
 mongo_url = os.environ['MONGO_URL']
 client = AsyncIOMotorClient(mongo_url)
@@ -73,7 +82,116 @@ def sanitize_user(user: dict) -> dict:
     user = dict(user)
     user.pop("_id", None)
     user.pop("password_hash", None)
+    user.pop("otp_hash", None)
+    user.pop("otp_expires_at", None)
+    user.pop("otp_attempts", None)
+    user.pop("otp_last_sent_at", None)
+    user.pop("otp_debug_code", None)
     return user
+
+
+def _utcnow() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def _parse_dt(value: Optional[str]) -> Optional[datetime]:
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(value)
+    except Exception:
+        return None
+
+
+def _otp_resend_after(last_sent: Optional[str]) -> int:
+    last = _parse_dt(last_sent)
+    if not last:
+        return 0
+    delta = (_utcnow() - last).total_seconds()
+    if delta >= OTP_RESEND_SECONDS:
+        return 0
+    return int(max(0, OTP_RESEND_SECONDS - delta))
+
+
+def _generate_otp() -> str:
+    return f"{random.randint(0, 999999):06d}"
+
+
+def _hash_otp(code: str) -> str:
+    return bcrypt.hashpw(code.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+
+
+def _verify_otp(code: str, hashed: str) -> bool:
+    try:
+        return bcrypt.checkpw(code.encode("utf-8"), hashed.encode("utf-8"))
+    except Exception:
+        return False
+
+
+def _send_otp_email(to_email: str, code: str) -> None:
+    if not RESEND_API_KEY:
+        if OTP_DEBUG:
+            logger.warning("RESEND_API_KEY not set; OTP debug mode enabled")
+            return
+        raise HTTPException(status_code=500, detail="Email provider not configured")
+
+    subject = "Your LastLap verification code"
+    text = f"Your verification code is {code}. It expires in {OTP_TTL_MINUTES} minutes."
+    html = f"<p>Your verification code is <strong>{code}</strong>.</p><p>It expires in {OTP_TTL_MINUTES} minutes.</p>"
+    resp = requests.post(
+        "https://api.resend.com/emails",
+        headers={
+            "Authorization": f"Bearer {RESEND_API_KEY}",
+            "Content-Type": "application/json",
+        },
+        json={
+            "from": EMAIL_FROM,
+            "to": [to_email],
+            "subject": subject,
+            "text": text,
+            "html": html,
+        },
+        timeout=15,
+    )
+    if resp.status_code >= 400:
+        logger.error("OTP email send failed: %s %s", resp.status_code, resp.text)
+        raise HTTPException(status_code=502, detail="Failed to send OTP")
+
+
+async def issue_otp(user: dict, force: bool = False) -> dict:
+    if not user.get("email"):
+        raise HTTPException(status_code=400, detail="Email required for OTP")
+
+    resend_after = _otp_resend_after(user.get("otp_last_sent_at"))
+    if resend_after > 0 and not force:
+        return {
+            "resend_after": resend_after,
+            "debug_code": user.get("otp_debug_code") if OTP_DEBUG else None,
+            "sent": False,
+        }
+
+    code = _generate_otp()
+    now = _utcnow()
+    expires_at = now + timedelta(minutes=OTP_TTL_MINUTES)
+    update = {
+        "otp_hash": _hash_otp(code),
+        "otp_expires_at": expires_at.isoformat(),
+        "otp_attempts": 0,
+        "otp_last_sent_at": now.isoformat(),
+    }
+    if OTP_DEBUG:
+        update["otp_debug_code"] = code
+
+    update_doc = {"$set": update}
+    if not OTP_DEBUG:
+        update_doc["$unset"] = {"otp_debug_code": ""}
+    await db.users.update_one({"id": user["id"]}, update_doc)
+    _send_otp_email(user["email"], code)
+    return {
+        "resend_after": OTP_RESEND_SECONDS,
+        "debug_code": code if OTP_DEBUG else None,
+        "sent": True,
+    }
 
 
 async def get_current_user(request: Request, creds: Optional[HTTPAuthorizationCredentials] = Depends(security)) -> dict:
@@ -114,6 +232,22 @@ class TokenOut(BaseModel):
     access_token: str
     token_type: str = "bearer"
     user: dict
+
+
+class OtpRequestIn(BaseModel):
+    email: EmailStr
+
+
+class OtpVerifyIn(BaseModel):
+    email: EmailStr
+    code: str = Field(min_length=4, max_length=10)
+
+
+class OtpRequiredOut(BaseModel):
+    otp_required: bool = True
+    email: EmailStr
+    resend_after: int = 0
+    debug_code: Optional[str] = None
 
 
 class TaskOut(BaseModel):
@@ -174,6 +308,7 @@ async def register(data: RegisterIn):
         "avatar_color": random.choice(avatar_colors),
         "joined_on": datetime.now(timezone.utc).isoformat(),
         "last_active": datetime.now(timezone.utc).isoformat(),
+        "email_verified": False,
     }
     await db.users.insert_one(user)
 
@@ -194,13 +329,69 @@ async def register(data: RegisterIn):
     return TokenOut(access_token=token, user=sanitize_user(user))
 
 
-@api_router.post("/auth/login", response_model=TokenOut)
+@api_router.post("/auth/login", response_model=Union[TokenOut, OtpRequiredOut])
 async def login(data: LoginIn):
     user = await db.users.find_one({"email": data.email.lower()}, {"_id": 0})
     if not user or not verify_password(data.password, user["password_hash"]):
         raise HTTPException(status_code=401, detail="Invalid email or password")
+    if not OTP_ENABLED:
+        token = create_token(user["id"], user["email"])
+        return TokenOut(access_token=token, user=sanitize_user(user))
+
+    otp = await issue_otp(user)
+    return OtpRequiredOut(
+        otp_required=True,
+        email=user["email"],
+        resend_after=otp.get("resend_after", 0),
+        debug_code=otp.get("debug_code"),
+    )
+
+
+@api_router.post("/auth/otp/request")
+async def otp_request(data: OtpRequestIn):
+    user = await db.users.find_one({"email": data.email.lower()}, {"_id": 0})
+    if not user:
+        return {"ok": True, "resend_after": 0}
+    otp = await issue_otp(user, force=False)
+    out = {"ok": True, "resend_after": otp.get("resend_after", 0)}
+    if otp.get("debug_code"):
+        out["debug_code"] = otp["debug_code"]
+    return out
+
+
+@api_router.post("/auth/otp/verify", response_model=TokenOut)
+async def otp_verify(data: OtpVerifyIn):
+    user = await db.users.find_one({"email": data.email.lower()}, {"_id": 0})
+    if not user:
+        raise HTTPException(status_code=400, detail="Invalid verification code")
+
+    attempts = int(user.get("otp_attempts", 0))
+    if attempts >= OTP_MAX_ATTEMPTS:
+        await db.users.update_one(
+            {"id": user["id"]},
+            {"$unset": {"otp_hash": "", "otp_expires_at": "", "otp_attempts": "", "otp_last_sent_at": "", "otp_debug_code": ""}},
+        )
+        raise HTTPException(status_code=400, detail="OTP attempts exceeded")
+
+    expires_at = _parse_dt(user.get("otp_expires_at"))
+    if not expires_at or _utcnow() > expires_at:
+        await db.users.update_one(
+            {"id": user["id"]},
+            {"$unset": {"otp_hash": "", "otp_expires_at": "", "otp_attempts": "", "otp_last_sent_at": "", "otp_debug_code": ""}},
+        )
+        raise HTTPException(status_code=400, detail="OTP expired")
+
+    if not user.get("otp_hash") or not _verify_otp(data.code, user["otp_hash"]):
+        await db.users.update_one({"id": user["id"]}, {"$inc": {"otp_attempts": 1}})
+        raise HTTPException(status_code=400, detail="Invalid verification code")
+
+    await db.users.update_one(
+        {"id": user["id"]},
+        {"$set": {"email_verified": True}, "$unset": {"otp_hash": "", "otp_expires_at": "", "otp_attempts": "", "otp_last_sent_at": "", "otp_debug_code": ""}},
+    )
     token = create_token(user["id"], user["email"])
-    return TokenOut(access_token=token, user=sanitize_user(user))
+    fresh = await db.users.find_one({"id": user["id"]}, {"_id": 0})
+    return TokenOut(access_token=token, user=sanitize_user(fresh))
 
 
 @api_router.get("/auth/me")

@@ -10,6 +10,23 @@ API = f"{BASE_URL}/api"
 TEST_PASSWORD = "Test1234!"
 
 
+def login_with_otp(session, email, password):
+    r = session.post(f"{API}/auth/login", json={"email": email, "password": password}, timeout=30)
+    assert r.status_code == 200, r.text
+    data = r.json()
+    if data.get("otp_required"):
+        code = data.get("debug_code")
+        if not code:
+            rr = session.post(f"{API}/auth/otp/request", json={"email": email}, timeout=15)
+            assert rr.status_code == 200, rr.text
+            code = rr.json().get("debug_code")
+        assert code, "OTP debug code missing (set OTP_DEBUG=true on backend)"
+        vr = session.post(f"{API}/auth/otp/verify", json={"email": email, "code": code}, timeout=30)
+        assert vr.status_code == 200, vr.text
+        return vr.json()
+    return data
+
+
 @pytest.fixture(scope="session")
 def session():
     s = requests.Session()
@@ -39,13 +56,8 @@ def registered_user(session):
 
 @pytest.fixture(scope="session")
 def user_token(session, registered_user):
-    r = session.post(
-        f"{API}/auth/login",
-        json={"email": registered_user["email"], "password": registered_user["password"]},
-        timeout=30,
-    )
-    assert r.status_code == 200, f"login failed: {r.status_code} {r.text}"
-    return r.json()["access_token"]
+    data = login_with_otp(session, registered_user["email"], registered_user["password"])
+    return data["access_token"]
 
 
 @pytest.fixture(scope="session")
@@ -63,13 +75,7 @@ def test_health(session):
 # --- Auth ---
 class TestAuth:
     def test_login_success(self, session, registered_user):
-        r = session.post(
-            f"{API}/auth/login",
-            json={"email": registered_user["email"], "password": registered_user["password"]},
-            timeout=30,
-        )
-        assert r.status_code == 200
-        data = r.json()
+        data = login_with_otp(session, registered_user["email"], registered_user["password"])
         assert "access_token" in data and isinstance(data["access_token"], str) and len(data["access_token"]) > 20
         assert data["user"]["email"] == registered_user["email"]
         assert data["user"]["username"] == registered_user["username"]

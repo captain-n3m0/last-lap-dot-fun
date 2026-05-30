@@ -32,6 +32,34 @@ export function AuthProvider({ children }) {
   const login = async (email, password) => {
     try {
       const { data } = await api.post("/auth/login", { email, password });
+      if (data.otp_required) {
+        return {
+          ok: false,
+          otpRequired: true,
+          email: data.email || email,
+          resendAfter: data.resend_after || 0,
+        };
+      }
+      localStorage.setItem("ll_token", data.access_token);
+      setUser(data.user);
+      return { ok: true };
+    } catch (e) {
+      return { ok: false, error: formatApiErrorDetail(e.response?.data?.detail) || e.message };
+    }
+  };
+
+  const requestOtp = async (email) => {
+    try {
+      const { data } = await api.post("/auth/otp/request", { email });
+      return { ok: true, resendAfter: data.resend_after || 0 };
+    } catch (e) {
+      return { ok: false, error: formatApiErrorDetail(e.response?.data?.detail) || e.message };
+    }
+  };
+
+  const verifyOtp = async (email, code) => {
+    try {
+      const { data } = await api.post("/auth/otp/verify", { email, code });
       localStorage.setItem("ll_token", data.access_token);
       setUser(data.user);
       return { ok: true };
@@ -66,7 +94,7 @@ export function AuthProvider({ children }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, register, logout, refreshUser }}>
+    <AuthContext.Provider value={{ user, loading, login, requestOtp, verifyOtp, register, logout, refreshUser }}>
       {children}
     </AuthContext.Provider>
   );
