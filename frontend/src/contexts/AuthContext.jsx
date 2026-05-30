@@ -71,6 +71,14 @@ export function AuthProvider({ children }) {
   const register = async (payload) => {
     try {
       const { data } = await api.post("/auth/register", payload);
+      if (data.otp_required) {
+        return {
+          ok: false,
+          otpRequired: true,
+          email: data.email || payload.email,
+          resendAfter: data.resend_after || 0,
+        };
+      }
       localStorage.setItem("ll_token", data.access_token);
       setUser(data.user);
       return { ok: true };

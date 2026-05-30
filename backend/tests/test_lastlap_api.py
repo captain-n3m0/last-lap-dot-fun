@@ -111,6 +111,16 @@ class TestAuth:
         }, timeout=30)
         assert r.status_code == 200, r.text
         data = r.json()
+        if data.get("otp_required"):
+            code = data.get("debug_code")
+            if not code:
+                rr = session.post(f"{API}/auth/otp/request", json={"email": email}, timeout=15)
+                assert rr.status_code == 200, rr.text
+                code = rr.json().get("debug_code")
+            assert code, "OTP debug code missing (set OTP_DEBUG=true on backend)"
+            vr = session.post(f"{API}/auth/otp/verify", json={"email": email, "code": code}, timeout=30)
+            assert vr.status_code == 200, vr.text
+            data = vr.json()
         assert data["user"]["email"] == email
         assert data["user"]["referral_code"].startswith("LAST-")
         assert "access_token" in data
@@ -161,13 +171,15 @@ class TestTasks:
     def test_start_and_complete_increments_lp(self, session):
         # Create a fresh user so we have at least one untouched task
         suffix = uuid.uuid4().hex[:8]
+        email = f"task_{suffix}@lastlap.com"
+        password = "Test1234!"
         reg = session.post(f"{API}/auth/register", json={
-            "email": f"task_{suffix}@lastlap.com",
-            "password": "Test1234!",
+            "email": email,
+            "password": password,
             "username": f"task_{suffix}",
         }, timeout=20)
         assert reg.status_code == 200
-        token = reg.json()["access_token"]
+        token = login_with_otp(session, email, password)["access_token"]
         hdr = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
 
         tasks = session.get(f"{API}/tasks", headers=hdr, timeout=15).json()

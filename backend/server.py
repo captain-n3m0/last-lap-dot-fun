@@ -270,7 +270,7 @@ class LeaderboardEntry(BaseModel):
 
 
 # --- Auth Endpoints ---
-@api_router.post("/auth/register", response_model=TokenOut)
+@api_router.post("/auth/register", response_model=Union[TokenOut, OtpRequiredOut])
 async def register(data: RegisterIn):
     email = data.email.lower()
     if await db.users.find_one({"email": email}):
@@ -325,8 +325,17 @@ async def register(data: RegisterIn):
             "created_at": datetime.now(timezone.utc).isoformat(),
         })
 
-    token = create_token(user_id, email)
-    return TokenOut(access_token=token, user=sanitize_user(user))
+    if not OTP_ENABLED:
+        token = create_token(user_id, email)
+        return TokenOut(access_token=token, user=sanitize_user(user))
+
+    otp = await issue_otp(user)
+    return OtpRequiredOut(
+        otp_required=True,
+        email=user["email"],
+        resend_after=otp.get("resend_after", 0),
+        debug_code=otp.get("debug_code"),
+    )
 
 
 @api_router.post("/auth/login", response_model=Union[TokenOut, OtpRequiredOut])
