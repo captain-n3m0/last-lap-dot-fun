@@ -86,14 +86,11 @@ function SkullEmblem() {
 }
 
 export default function Login() {
-  const { login, requestOtp, verifyOtp } = useAuth();
+  const { login } = useAuth();
   const navigate = useNavigate();
   const [mode, setMode] = useState("choose");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [otpCode, setOtpCode] = useState("");
-  const [otpEmail, setOtpEmail] = useState("");
-  const [otpResendAfter, setOtpResendAfter] = useState(0);
   const [err, setErr] = useState("");
   const [loading, setLoading] = useState(false);
   const [globalStats, setGlobalStats] = useState(null);
@@ -104,39 +101,8 @@ export default function Login() {
     setLoading(true);
     const res = await login(email, password);
     setLoading(false);
-    if (res.otpRequired) {
-      setOtpEmail(res.email || email);
-      setOtpCode("");
-      setOtpResendAfter(res.resendAfter || 0);
-      setMode("otp");
-      return;
-    }
     if (res.ok) navigate("/");
     else setErr(res.error);
-  };
-
-  const submitOtp = async (e) => {
-    e.preventDefault();
-    setErr("");
-    setLoading(true);
-    const res = await verifyOtp(otpEmail, otpCode);
-    setLoading(false);
-    if (res.ok) navigate("/");
-    else setErr(res.error);
-  };
-
-  const resendOtp = async () => {
-    if (!otpEmail || otpResendAfter > 0) return;
-    setErr("");
-    setLoading(true);
-    const res = await requestOtp(otpEmail);
-    setLoading(false);
-    if (res.ok) {
-      setOtpResendAfter(res.resendAfter || 60);
-      toast("CODE SENT", { duration: 2500 });
-    } else {
-      setErr(res.error);
-    }
   };
 
   const handleXLogin = () => {
@@ -152,14 +118,6 @@ export default function Login() {
       .catch(() => {});
     return () => { mounted = false; };
   }, []);
-
-  useEffect(() => {
-    if (otpResendAfter <= 0) return;
-    const timer = setTimeout(() => {
-      setOtpResendAfter((s) => Math.max(0, s - 1));
-    }, 1000);
-    return () => clearTimeout(timer);
-  }, [otpResendAfter]);
 
   const formatStatValue = (value) => (value == null ? "—" : Number(value).toLocaleString());
 
@@ -274,45 +232,6 @@ export default function Login() {
                   </form>
                 )}
 
-                {mode === "otp" && (
-                  <form onSubmit={submitOtp} data-testid="otp-form">
-                    <button type="button" onClick={() => { setMode("email"); setErr(""); }}
-                      className="flex items-center gap-1 font-pixel text-[10px] tracking-widest text-[var(--muted)] hover:text-white transition mb-3"
-                      data-testid="back-to-email">
-                      <ChevronLeft size={14} /> BACK
-                    </button>
-                    <label className="label-ll block mb-1.5">VERIFICATION CODE</label>
-                    <div className="relative mb-2">
-                      <Lock size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--muted)]" />
-                      <input type="text" required value={otpCode} onChange={(e) => setOtpCode(e.target.value)}
-                        className="input-ll pl-9 bg-black/40 py-2.5 tracking-widest"
-                        autoFocus
-                        inputMode="numeric"
-                        maxLength={8}
-                        data-testid="otp-code" />
-                    </div>
-                    <div className="font-mono-crt text-[11px] text-[var(--muted)] mb-3">
-                      CODE SENT TO {otpEmail}
-                    </div>
-                    {err && (
-                      <div className="font-pixel text-[10px] tracking-widest text-[var(--red)] mb-3" data-testid="otp-error">
-                        {err.toUpperCase()}
-                      </div>
-                    )}
-                    <button disabled={loading} className="btn-cyber bg-[var(--purple)] hover:bg-[var(--purple-bright)] w-full py-3 text-white font-pixel text-[12px]" data-testid="otp-submit">
-                      {loading ? "VERIFYING..." : "VERIFY CODE"}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={resendOtp}
-                      disabled={loading || otpResendAfter > 0}
-                      className="btn-ghost-ll w-full mt-3"
-                      data-testid="otp-resend"
-                    >
-                      {otpResendAfter > 0 ? `RESEND IN ${otpResendAfter}s` : "RESEND CODE"}
-                    </button>
-                  </form>
-                )}
 
                 <div className="mt-5 pt-4 border-t border-[var(--border)] grid grid-cols-3 gap-3">
                   <FeaturePill icon={ShieldLock} title="SECURE LOGIN" subtitle={"Powered by X\n(Twitter) OAuth"} />

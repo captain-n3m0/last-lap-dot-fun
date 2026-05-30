@@ -10,20 +10,11 @@ API = f"{BASE_URL}/api"
 TEST_PASSWORD = "Test1234!"
 
 
-def login_with_otp(session, email, password):
+def login_with_password(session, email, password):
     r = session.post(f"{API}/auth/login", json={"email": email, "password": password}, timeout=30)
     assert r.status_code == 200, r.text
     data = r.json()
-    if data.get("otp_required"):
-        code = data.get("debug_code")
-        if not code:
-            rr = session.post(f"{API}/auth/otp/request", json={"email": email}, timeout=15)
-            assert rr.status_code == 200, rr.text
-            code = rr.json().get("debug_code")
-        assert code, "OTP debug code missing (set OTP_DEBUG=true on backend)"
-        vr = session.post(f"{API}/auth/otp/verify", json={"email": email, "code": code}, timeout=30)
-        assert vr.status_code == 200, vr.text
-        return vr.json()
+    assert not data.get("otp_required"), "OTP should not be required on login"
     return data
 
 
@@ -56,7 +47,7 @@ def registered_user(session):
 
 @pytest.fixture(scope="session")
 def user_token(session, registered_user):
-    data = login_with_otp(session, registered_user["email"], registered_user["password"])
+    data = login_with_password(session, registered_user["email"], registered_user["password"])
     return data["access_token"]
 
 
@@ -75,7 +66,7 @@ def test_health(session):
 # --- Auth ---
 class TestAuth:
     def test_login_success(self, session, registered_user):
-        data = login_with_otp(session, registered_user["email"], registered_user["password"])
+        data = login_with_password(session, registered_user["email"], registered_user["password"])
         assert "access_token" in data and isinstance(data["access_token"], str) and len(data["access_token"]) > 20
         assert data["user"]["email"] == registered_user["email"]
         assert data["user"]["username"] == registered_user["username"]
@@ -179,7 +170,7 @@ class TestTasks:
             "username": f"task_{suffix}",
         }, timeout=20)
         assert reg.status_code == 200
-        token = login_with_otp(session, email, password)["access_token"]
+        token = login_with_password(session, email, password)["access_token"]
         hdr = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
 
         tasks = session.get(f"{API}/tasks", headers=hdr, timeout=15).json()

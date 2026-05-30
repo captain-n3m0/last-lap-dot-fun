@@ -338,22 +338,13 @@ async def register(data: RegisterIn):
     )
 
 
-@api_router.post("/auth/login", response_model=Union[TokenOut, OtpRequiredOut])
+@api_router.post("/auth/login", response_model=TokenOut)
 async def login(data: LoginIn):
     user = await db.users.find_one({"email": data.email.lower()}, {"_id": 0})
     if not user or not verify_password(data.password, user["password_hash"]):
         raise HTTPException(status_code=401, detail="Invalid email or password")
-    if not OTP_ENABLED:
-        token = create_token(user["id"], user["email"])
-        return TokenOut(access_token=token, user=sanitize_user(user))
-
-    otp = await issue_otp(user)
-    return OtpRequiredOut(
-        otp_required=True,
-        email=user["email"],
-        resend_after=otp.get("resend_after", 0),
-        debug_code=otp.get("debug_code"),
-    )
+    token = create_token(user["id"], user["email"])
+    return TokenOut(access_token=token, user=sanitize_user(user))
 
 
 @api_router.post("/auth/otp/request")
