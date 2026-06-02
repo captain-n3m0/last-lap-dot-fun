@@ -122,10 +122,10 @@ export default function Login() {
   const formatStatValue = (value) => (value == null ? "—" : Number(value).toLocaleString());
 
   return (
-    <div className="h-screen overflow-hidden relative bg-[var(--bg)]" data-testid="login-page">
+    <div className="min-h-screen overflow-x-hidden relative bg-[var(--bg)]" data-testid="login-page">
       {/* ===== Full-page background ===== */}
       <div className="absolute inset-0 z-0">
-        <img src="/login-bg.png" alt="" className="absolute inset-0 w-full h-full object-cover" />
+        <img src="/login-bg.png" alt="" className="absolute inset-0 w-full h-full object-cover motion-pan" />
         <div className="absolute inset-0 bg-gradient-to-b from-black/40 via-black/30 to-black/70" />
       </div>
 

@@ -28,25 +28,27 @@ function TaskItem({ task, onAction, isAuthLoading }) {
   const isStarted = task.status === "started";
   const platformIcon = task.platform === "X" ? <XLogo size={14} /> : task.platform === "DISCORD" ? "♣" : task.platform === "WALLET" ? "₿" : task.platform === "EMAIL" ? "✉" : "★";
   return (
-    <div className={`card-ll-inner px-4 py-3 flex items-center gap-4 ${isCompleted ? "opacity-60" : ""}`} data-testid={`task-item-${task.id}`}>
+    <div className={`card-ll-inner px-4 py-3 flex flex-wrap items-center gap-3 sm:gap-4 ${isCompleted ? "opacity-60" : ""}`} data-testid={`task-item-${task.id}`}>
       <div className="w-9 h-9 rounded bg-black/50 border border-[var(--border)] flex items-center justify-center font-pixel text-white text-sm">
         {platformIcon}
       </div>
-      <div className="flex-1 min-w-0">
+      <div className="flex-1 min-w-0 w-full sm:w-auto">
         <div className="font-pixel text-[11px] tracking-widest text-white truncate">{task.title.toUpperCase()}</div>
         <div className="font-mono-crt text-[15px] text-[var(--muted)] truncate">{task.description}</div>
       </div>
-      <div className="font-pixel text-[12px] tracking-widest text-[var(--purple-bright)] whitespace-nowrap">
-        {task.reward_lp} LP
+      <div className="w-full sm:w-auto flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 sm:ml-auto">
+        <div className="font-pixel text-[12px] tracking-widest text-[var(--purple-bright)] whitespace-nowrap">
+          {task.reward_lp} LP
+        </div>
+        <button
+          onClick={() => onAction(task)}
+          disabled={isCompleted || isAuthLoading}
+          className="btn-primary-ll w-full sm:w-auto sm:min-w-[110px]"
+          data-testid={`task-action-${task.id}`}
+        >
+          {isCompleted ? "DONE" : isStarted ? "CLAIM" : "START TASK"}
+        </button>
       </div>
-      <button
-        onClick={() => onAction(task)}
-        disabled={isCompleted || isAuthLoading}
-        className="btn-primary-ll min-w-[110px]"
-        data-testid={`task-action-${task.id}`}
-      >
-        {isCompleted ? "DONE" : isStarted ? "CLAIM" : "START TASK"}
-      </button>
     </div>
   );
 }
@@ -206,12 +208,12 @@ export default function Dashboard() {
 
       {/* HERO */}
       <section className="relative max-w-[1400px] mx-auto px-6 lg:px-10 pt-10 pb-12">
-        <div className="relative rounded-lg overflow-hidden border border-[var(--border)] min-h-[360px] md:min-h-[440px]">
+        <div className="relative rounded-lg overflow-hidden border border-[var(--border)] min-h-[360px] md:min-h-[440px] hero-rail">
           {/* Background artwork with fade */}
           <img
             src="/hero-art.png"
             alt="LastLap riders on Route 66"
-            className="absolute inset-0 w-full h-full object-cover"
+            className="absolute inset-0 w-full h-full object-cover hero-art"
             data-testid="hero-artwork"
           />
           {/* Left-to-right dark fade so the title is readable */}
@@ -221,11 +223,11 @@ export default function Dashboard() {
 
           {/* Foreground content */}
           <div className="relative z-10 px-6 md:px-10 py-10 md:py-14 max-w-[680px] fade-in-up">
-            <h1 className="font-brush text-[64px] md:text-[88px] leading-[0.95] mb-5" data-testid="hero-title">
+            <h1 className="font-brush text-[44px] sm:text-[64px] md:text-[88px] leading-[0.95] mb-5 hero-title stagger-1" data-testid="hero-title">
               <span className="text-white">RACER </span>
               <span className="text-[var(--purple)]">HUB</span>
             </h1>
-            <div className="font-mono-crt text-[20px] text-[var(--muted)] max-w-md">
+            <div className="font-mono-crt text-[16px] sm:text-[20px] text-[var(--muted)] max-w-md hero-sub stagger-2">
               COMPLETE MISSIONS, EARN LAP POINTS,<br/>AND CLIMB THE GLOBAL GRID
             </div>
           </div>
@@ -305,7 +307,7 @@ export default function Dashboard() {
               <div className="font-pixel text-[9px] tracking-widest text-[var(--muted)] mt-1">YOUR PERFORMANCE OVERVIEW</div>
             </div>
           </div>
-          <div className="grid grid-cols-3 gap-3 mb-3">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-3">
             <div className="card-ll-inner p-4">
               <div className="label-ll mb-2">TASKS COMPLETED</div>
               <div className="stat-num">{stats?.tasks_completed ?? 0}<span className="text-[var(--muted)] text-[14px]"> /{tasksGoalLabel}</span></div>
@@ -323,7 +325,7 @@ export default function Dashboard() {
               <div className="font-pixel text-[9px] tracking-widest text-[var(--muted)] mt-1">TOP {stats?.top_percentile ?? "—"}%</div>
             </div>
           </div>
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div className="card-ll-inner p-4">
               <div className="label-ll mb-2">REFERRALS</div>
               <div className="flex items-center gap-2">
@@ -372,7 +374,7 @@ export default function Dashboard() {
             </div>
           </div>
 
-          <div className="grid grid-cols-3 gap-3 mb-4">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
             <div className="card-ll-inner p-3">
               <div className="label-ll mb-1">CREW INVITES</div>
               <div className="stat-num">{refs?.crew_invites ?? 0}</div>

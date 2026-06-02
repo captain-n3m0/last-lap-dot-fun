@@ -22,7 +22,7 @@ export default function Navbar() {
     const active = location.pathname === to;
     return (
       <Link to={to} data-testid={testid}
-        className={`font-pixel text-[11px] tracking-widest px-3 py-2 transition-colors ${active ? "text-[var(--purple-bright)]" : "text-white/80 hover:text-white"}`}>
+        className={`nav-link font-pixel text-[11px] tracking-widest px-3 py-2 transition-colors ${active ? "text-[var(--purple-bright)]" : "text-white/80 hover:text-white"}`}>
         {label}
       </Link>
     );

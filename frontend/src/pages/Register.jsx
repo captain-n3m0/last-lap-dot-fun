@@ -78,7 +78,7 @@ export default function Register() {
         <img
           src="/hero-art.png"
           alt="LastLap riders"
-          className="w-full h-full object-cover"
+          className="w-full h-full object-cover motion-pan"
         />
         <div className="absolute bottom-0 left-0 p-10">
           <div className="font-brush text-[72px] leading-none">
