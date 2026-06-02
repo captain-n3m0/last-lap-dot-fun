@@ -7,16 +7,13 @@ import Register from "./pages/Register";
 import Leaderboard from "./pages/Leaderboard";
 import TasksPage from "./pages/TasksPage";
 import About from "./pages/About";
+import LoadingScreen from "./components/LoadingScreen";
 import { Toaster } from "sonner";
 
 function Protected({ children }) {
   const { user, loading } = useAuth();
   if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-[var(--bg)]">
-        <div className="font-pixel text-xs text-[var(--muted)] tracking-widest">LOADING TRACK...</div>
-      </div>
-    );
+    return <LoadingScreen />;
   }
   if (!user) return <Navigate to="/login" replace />;
   return children;
@@ -24,7 +21,7 @@ function Protected({ children }) {
 
 function RedirectIfAuth({ children }) {
   const { user, loading } = useAuth();
-  if (loading) return null;
+  if (loading) return <LoadingScreen />;
   if (user) return <Navigate to="/" replace />;
   return children;
 }

@@ -18,6 +18,20 @@ def login_with_password(session, email, password):
     return data
 
 
+def finalize_signup_otp(session, email, data):
+    if not data.get("otp_required"):
+        return data
+    code = data.get("debug_code")
+    if not code:
+        rr = session.post(f"{API}/auth/otp/request", json={"email": email}, timeout=15)
+        assert rr.status_code == 200, rr.text
+        code = rr.json().get("debug_code")
+    assert code, "OTP debug code missing (set OTP_DEBUG=true on backend)"
+    vr = session.post(f"{API}/auth/otp/verify", json={"email": email, "code": code}, timeout=30)
+    assert vr.status_code == 200, vr.text
+    return vr.json()
+
+
 @pytest.fixture(scope="session")
 def session():
     s = requests.Session()
@@ -101,17 +115,7 @@ class TestAuth:
             "email": email, "password": TEST_PASSWORD, "username": username
         }, timeout=30)
         assert r.status_code == 200, r.text
-        data = r.json()
-        if data.get("otp_required"):
-            code = data.get("debug_code")
-            if not code:
-                rr = session.post(f"{API}/auth/otp/request", json={"email": email}, timeout=15)
-                assert rr.status_code == 200, rr.text
-                code = rr.json().get("debug_code")
-            assert code, "OTP debug code missing (set OTP_DEBUG=true on backend)"
-            vr = session.post(f"{API}/auth/otp/verify", json={"email": email, "code": code}, timeout=30)
-            assert vr.status_code == 200, vr.text
-            data = vr.json()
+        data = finalize_signup_otp(session, email, r.json())
         assert data["user"]["email"] == email
         assert data["user"]["referral_code"].startswith("LAST-")
         assert "access_token" in data
@@ -128,6 +132,7 @@ class TestAuth:
         stats_before = session.get(f"{API}/users/me/stats", headers=auth_headers, timeout=15).json()
         lp_before = stats_before["lap_points"]
         suffix = uuid.uuid4().hex[:8]
+        email = f"ref_{suffix}@lastlap.com"
         r = session.post(f"{API}/auth/register", json={
             "email": f"ref_{suffix}@lastlap.com",
             "password": TEST_PASSWORD,
@@ -135,6 +140,11 @@ class TestAuth:
             "referral_code": registered_user["referral_code"],
         }, timeout=20)
         assert r.status_code == 200
+        data = r.json()
+        if data.get("otp_required"):
+            stats_mid = session.get(f"{API}/users/me/stats", headers=auth_headers, timeout=15).json()
+            assert stats_mid["lap_points"] == lp_before
+            finalize_signup_otp(session, email, data)
         stats_after = session.get(f"{API}/users/me/stats", headers=auth_headers, timeout=15).json()
         assert stats_after["lap_points"] == lp_before + 50, "Referrer should gain 50 LP"
 

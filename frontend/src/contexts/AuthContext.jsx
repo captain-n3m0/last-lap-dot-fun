@@ -6,12 +6,22 @@ const AuthContext = createContext(null);
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null); // null = checking, false = unauth, object = auth
   const [loading, setLoading] = useState(true);
+  const MIN_LOADING_MS = 2000;
 
   const fetchMe = useCallback(async () => {
+    const startedAt = Date.now();
+    const finishLoading = async () => {
+      const elapsed = Date.now() - startedAt;
+      const remaining = Math.max(0, MIN_LOADING_MS - elapsed);
+      if (remaining > 0) {
+        await new Promise((resolve) => setTimeout(resolve, remaining));
+      }
+      setLoading(false);
+    };
     const token = localStorage.getItem("ll_token");
     if (!token) {
       setUser(false);
-      setLoading(false);
+      await finishLoading();
       return;
     }
     try {
@@ -21,7 +31,7 @@ export function AuthProvider({ children }) {
       localStorage.removeItem("ll_token");
       setUser(false);
     } finally {
-      setLoading(false);
+      await finishLoading();
     }
   }, []);
 

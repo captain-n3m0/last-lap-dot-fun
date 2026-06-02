@@ -292,6 +292,7 @@ async def register(data: RegisterIn):
 
     user_id = str(uuid.uuid4())
     avatar_colors = ["#8B5CF6", "#EF4444", "#F59E0B", "#10B981", "#3B82F6", "#EC4899"]
+    now_iso = datetime.now(timezone.utc).isoformat()
     user = {
         "id": user_id,
         "email": email,
@@ -306,24 +307,28 @@ async def register(data: RegisterIn):
         "referral_code": code,
         "referred_by": referred_by,
         "avatar_color": random.choice(avatar_colors),
-        "joined_on": datetime.now(timezone.utc).isoformat(),
-        "last_active": datetime.now(timezone.utc).isoformat(),
+        "joined_on": now_iso,
+        "last_active": now_iso,
         "email_verified": False,
     }
     await db.users.insert_one(user)
 
-    # If referred, give the referrer LP
+    # If referred, defer the reward until OTP verification (when enabled)
     if referred_by:
-        await db.users.update_one({"id": referred_by}, {"$inc": {"lap_points": 50}})
-        await db.referrals.insert_one({
-            "id": str(uuid.uuid4()),
-            "owner_id": referred_by,
-            "invitee_id": user_id,
-            "invitee_username": data.username.lower(),
-            "status": "verified",
-            "lp_earned": 50,
-            "created_at": datetime.now(timezone.utc).isoformat(),
-        })
+        existing_ref = await db.referrals.find_one({"owner_id": referred_by, "invitee_id": user_id})
+        if existing_ref is None:
+            await db.referrals.insert_one({
+                "id": str(uuid.uuid4()),
+                "owner_id": referred_by,
+                "invitee_id": user_id,
+                "invitee_username": data.username.lower(),
+                "status": "pending" if OTP_ENABLED else "verified",
+                "lp_earned": 0 if OTP_ENABLED else 50,
+                "created_at": now_iso,
+                **({"verified_at": now_iso} if not OTP_ENABLED else {}),
+            })
+        if not OTP_ENABLED:
+            await db.users.update_one({"id": referred_by}, {"$inc": {"lap_points": 50}})
 
     if not OTP_ENABLED:
         token = create_token(user_id, email)
@@ -389,6 +394,30 @@ async def otp_verify(data: OtpVerifyIn):
         {"id": user["id"]},
         {"$set": {"email_verified": True}, "$unset": {"otp_hash": "", "otp_expires_at": "", "otp_attempts": "", "otp_last_sent_at": "", "otp_debug_code": ""}},
     )
+
+    # Award referral credit on first successful verification
+    referrer_id = user.get("referred_by")
+    if referrer_id:
+        now_iso = _utcnow().isoformat()
+        existing_ref = await db.referrals.find_one({"owner_id": referrer_id, "invitee_id": user["id"]})
+        if not existing_ref or existing_ref.get("status") != "verified":
+            await db.users.update_one({"id": referrer_id}, {"$inc": {"lap_points": 50}})
+            if existing_ref:
+                await db.referrals.update_one(
+                    {"_id": existing_ref["_id"]},
+                    {"$set": {"status": "verified", "lp_earned": 50, "verified_at": now_iso}},
+                )
+            else:
+                await db.referrals.insert_one({
+                    "id": str(uuid.uuid4()),
+                    "owner_id": referrer_id,
+                    "invitee_id": user["id"],
+                    "invitee_username": user.get("username"),
+                    "status": "verified",
+                    "lp_earned": 50,
+                    "created_at": now_iso,
+                    "verified_at": now_iso,
+                })
     token = create_token(user["id"], user["email"])
     fresh = await db.users.find_one({"id": user["id"]}, {"_id": 0})
     return TokenOut(access_token=token, user=sanitize_user(fresh))
