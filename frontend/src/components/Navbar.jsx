@@ -62,7 +62,7 @@ export default function Navbar() {
             <ChevronDown size={14} className="text-[var(--muted)] group-hover:text-white transition icon-wiggle" />
           </button>
           {open && (
-            <div className="absolute right-0 top-full mt-2 w-72 card-ll p-2 menu-pop" data-testid="profile-dropdown">
+            <div className="absolute right-0 top-full mt-2 w-72 card-ll menu-panel p-2 menu-pop" data-testid="profile-dropdown">
               <div className="px-3 py-2 border-b border-[var(--border)] mb-1">
                 <div className="font-pixel text-[10px] tracking-widest text-white">@{user?.username}</div>
                 {user?.wallet_address ? (

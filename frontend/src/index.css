@@ -146,6 +146,23 @@ body {
     animation: card-scan 1s ease;
 }
 
+/* Dropdown panels should not lift or scan on hover */
+.menu-panel {
+    background: rgba(21, 21, 29, 0.96);
+    backdrop-filter: blur(12px);
+    box-shadow: 0 18px 34px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(139, 92, 246, 0.16);
+}
+.menu-panel:hover {
+    transform: none;
+    border-color: var(--border-strong);
+    box-shadow: 0 18px 34px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(139, 92, 246, 0.16);
+}
+.menu-panel::after,
+.menu-panel:hover::after {
+    opacity: 0;
+    animation: none;
+}
+
 .btn-primary-ll {
     background: var(--purple);
     color: white;
