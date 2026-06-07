@@ -129,9 +129,9 @@ export default function Login() {
         <div className="absolute inset-0 bg-gradient-to-b from-black/40 via-black/30 to-black/70" />
       </div>
 
-      <div className="relative z-10 h-full flex flex-col">
+      <div className="relative z-10 min-h-screen flex flex-col">
         {/* ===== LASTLAP top-left ===== */}
-        <div className="px-8 lg:px-12 pt-5 flex-shrink-0">
+        <div className="px-5 sm:px-6 lg:px-8 xl:px-10 pt-5 flex-shrink-0">
           <div className="font-brush text-[34px] leading-none flex items-center gap-3 impact-in">
             <span className="text-white">LAST</span><span className="text-[var(--purple)]">LAP</span>
             <span className="float-drift inline-flex"><SkewCheckerFlag width={48} height={34} color="#E8E8EC" /></span>
@@ -139,7 +139,7 @@ export default function Login() {
         </div>
 
         {/* ===== Middle: headline + auth card ===== */}
-        <div className="flex-1 grid grid-cols-1 lg:grid-cols-[1.1fr_1fr] gap-6 px-8 lg:px-12 items-center min-h-0">
+        <div className="flex-1 grid grid-cols-1 lg:grid-cols-[1.1fr_1fr] gap-6 px-5 sm:px-6 lg:px-8 xl:px-10 items-center min-h-0 py-5">
           {/* Left — headline */}
           <div className="hidden lg:block">
             <h1 className="font-brush text-[56px] xl:text-[64px] leading-[0.95] text-white drop-shadow-[0_4px_20px_rgba(0,0,0,0.9)] hero-title">JOIN THE RACE.</h1>
@@ -250,8 +250,8 @@ export default function Login() {
         </div>
 
         {/* ===== Bottom stats bar ===== */}
-        <div className="px-8 lg:px-12 pb-4 flex-shrink-0">
-          <div className="backdrop-blur-md bg-black/45 border border-[var(--border)] rounded-lg p-3.5 max-w-[820px] card-animate">
+        <div className="flex-shrink-0">
+          <div className="backdrop-blur-md bg-black/55 border-t border-[var(--border)] p-3.5 sm:px-6 lg:px-8 xl:px-10 card-animate">
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
               <Stat icon={Users} value={formatStatValue(globalStats?.total_riders)} label="Riders" color="#A78BFA" className="row-animate stagger-1" />
               <Stat icon={Flame} value={formatStatValue(globalStats?.total_lp)} label="LP Earned" color="#EF4444" className="row-animate stagger-2" />

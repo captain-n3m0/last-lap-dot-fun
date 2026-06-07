@@ -31,7 +31,7 @@ export default function Navbar() {
 
   return (
     <nav className="w-full border-b border-[var(--border)] bg-[var(--bg)]/95 backdrop-blur-md sticky top-0 z-50 nav-slide" data-testid="main-navbar">
-      <div className="max-w-[1400px] mx-auto px-6 lg:px-10 h-16 flex items-center justify-between">
+      <div className="w-full px-5 sm:px-6 lg:px-8 xl:px-10 h-16 flex items-center justify-between">
         <Link to="/" className="flex items-center gap-2 font-brush text-3xl tracking-tight neon-text" data-testid="navbar-logo">
           <img src="/skull-emblem.png" alt="" className="w-9 h-9 object-contain" />
           <span><span className="text-white">LAST</span><span className="text-[var(--purple)]">LAP</span></span>

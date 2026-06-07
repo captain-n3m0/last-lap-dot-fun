@@ -20,9 +20,9 @@ export default function Leaderboard() {
   }, []);
 
   return (
-    <div className="min-h-screen bg-[var(--bg)] page-transition" data-testid="leaderboard-page">
+    <div className="min-h-screen bg-[var(--bg)] page-transition flex flex-col" data-testid="leaderboard-page">
       <Navbar />
-      <main className="max-w-[1100px] mx-auto px-6 lg:px-10 py-12">
+      <main className="flex-1 w-full px-5 sm:px-6 lg:px-8 xl:px-10 py-8">
         <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4 mb-8">
           <div>
             <h1 className="font-brush text-[44px] sm:text-[64px] leading-none hero-title">

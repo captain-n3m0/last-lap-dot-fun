@@ -6,9 +6,9 @@ import { useAuth } from "../contexts/AuthContext";
 export default function About() {
   const { user } = useAuth();
   return (
-    <div className="min-h-screen bg-[var(--bg)] page-transition" data-testid="about-page">
+    <div className="min-h-screen bg-[var(--bg)] page-transition flex flex-col" data-testid="about-page">
       {user && <Navbar />}
-      <main className="max-w-[900px] mx-auto px-6 lg:px-10 py-16">
+      <main className="flex-1 w-full px-5 sm:px-6 lg:px-8 xl:px-10 py-10">
         <h1 className="font-brush text-[44px] sm:text-[64px] leading-none mb-6 hero-title">
           <span className="text-white">WHAT IS </span><span className="text-[var(--purple)]">LASTLAP?</span>
         </h1>

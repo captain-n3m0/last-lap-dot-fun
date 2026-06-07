@@ -13,8 +13,8 @@ const SOCIAL_LINKS = [
 
 export default function Footer() {
   return (
-    <footer className="border-t border-[var(--border)] mt-10 bg-[var(--bg)] footer-animate">
-      <div className="max-w-[1400px] mx-auto px-6 lg:px-10 py-8 grid grid-cols-1 md:grid-cols-3 gap-8">
+    <footer className="border-t border-[var(--border)] mt-6 bg-[var(--bg)] footer-animate">
+      <div className="w-full px-5 sm:px-6 lg:px-8 xl:px-10 py-6 grid grid-cols-1 md:grid-cols-3 gap-6">
         <div className="fade-in-up stagger-1">
           <div className="flex items-center gap-3 font-brush text-4xl mb-3">
             <img src="/skull-emblem.png" alt="" className="w-11 h-11 object-contain" />
@@ -45,7 +45,7 @@ export default function Footer() {
           </div>
         </div>
       </div>
-      <div className="border-t border-[var(--border)] py-4 text-center font-pixel text-[9px] tracking-widest text-[var(--muted-2)]">
+      <div className="border-t border-[var(--border)] px-5 py-3 text-center font-pixel text-[9px] tracking-widest text-[var(--muted-2)]">
         © 2025 LASTLAP — ALL LAPS RESERVED
       </div>
     </footer>

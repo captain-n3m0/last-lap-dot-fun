@@ -48,9 +48,9 @@ export default function TasksPage() {
   };
 
   return (
-    <div className="min-h-screen bg-[var(--bg)] page-transition" data-testid="tasks-page">
+    <div className="min-h-screen bg-[var(--bg)] page-transition flex flex-col" data-testid="tasks-page">
       <Navbar />
-      <main className="max-w-[1100px] mx-auto px-6 lg:px-10 py-12">
+      <main className="flex-1 w-full px-5 sm:px-6 lg:px-8 xl:px-10 py-8">
         <h1 className="font-brush text-[44px] sm:text-[64px] leading-none mb-2 hero-title">
           <span className="text-white">RIDER </span><span className="text-[var(--purple)]">GARAGE</span>
         </h1>

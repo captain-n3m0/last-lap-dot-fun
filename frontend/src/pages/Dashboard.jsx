@@ -208,7 +208,7 @@ export default function Dashboard() {
       <Navbar />
 
       {/* HERO */}
-      <section className="relative max-w-[1400px] mx-auto px-6 lg:px-10 pt-6 pb-6">
+      <section className="relative w-full px-5 sm:px-6 lg:px-8 xl:px-10 pt-5 pb-5">
         <div className="relative rounded-lg overflow-hidden border border-[var(--border)] min-h-[260px] md:min-h-[320px] hero-rail">
           {/* Background artwork with fade */}
           <img
@@ -236,7 +236,7 @@ export default function Dashboard() {
       </section>
 
       {/* TOP STATS */}
-      <section className="max-w-[1400px] mx-auto px-6 lg:px-10 grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <section className="w-full px-5 sm:px-6 lg:px-8 xl:px-10 grid grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard icon={Shield} label="RIDER STATUS" value={user?.role || "ROOKIE RIDER"} testid="stat-status" className="card-animate stagger-1" />
         <StatCard icon={Flag} label="LAP POINTS (LP)" value={(stats?.lap_points ?? user?.lap_points ?? 0).toLocaleString()} testid="stat-lp" className="card-animate stagger-2" />
         <StatCard icon={TrendingUp} label="CURRENT RANK" value={`#${stats?.current_rank ?? "—"}`} testid="stat-rank" className="card-animate stagger-3" />
@@ -244,7 +244,7 @@ export default function Dashboard() {
       </section>
 
       {/* DAILY TASKS + LEADERBOARD */}
-      <section className="max-w-[1400px] mx-auto px-6 lg:px-10 mt-6 grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <section className="w-full px-5 sm:px-6 lg:px-8 xl:px-10 mt-5 grid grid-cols-1 lg:grid-cols-2 gap-5">
         {/* Daily Race Tasks */}
         <div className="card-ll p-5 card-animate stagger-1" data-testid="daily-tasks-panel">
           <div className="flex items-start justify-between mb-5">
@@ -306,7 +306,7 @@ export default function Dashboard() {
       </section>
 
       {/* RACE STATS + BUILD CREW */}
-      <section className="max-w-[1400px] mx-auto px-6 lg:px-10 mt-6 grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <section className="w-full px-5 sm:px-6 lg:px-8 xl:px-10 mt-5 grid grid-cols-1 lg:grid-cols-2 gap-5">
         {/* Race Stats */}
         <div className="card-ll p-5 card-animate stagger-3" data-testid="race-stats-panel">
           <div className="flex items-center gap-3 mb-5">
