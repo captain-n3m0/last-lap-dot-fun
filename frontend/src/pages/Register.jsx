@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
 import WalletButton from "../components/WalletButton";
+import XOAuthButton from "../components/XOAuthButton";
 
 export default function Register() {
   const { register, requestOtp, verifyOtp } = useAuth();
@@ -117,7 +118,10 @@ export default function Register() {
               <div className="flex-1 h-px bg-[var(--border)]" />
             </div>
 
-            <WalletButton variant="signin" />
+            <XOAuthButton mode="signin" referralCode={form.referral_code} testId="register-x-btn" />
+            <div className="mt-2">
+              <WalletButton variant="signin" />
+            </div>
 
             <div className="mt-6 font-pixel text-[10px] tracking-widest text-[var(--muted)] text-center">
               ALREADY A RIDER? <Link to="/login" className="text-[var(--purple-bright)]" data-testid="link-login">ENTER THE PIT</Link>

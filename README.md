@@ -15,6 +15,7 @@ Hetzner, Contabo, AWS EC2, etc.).
 | A Hostinger plan that supports Node.js + Python (e.g. **VPS** or **Cloud Hosting** — the cheap "Web Hosting" / "Premium" shared plans only support PHP, so won't work for the backend) | https://www.hostinger.com |
 | A domain name | included with most Hostinger plans |
 | A MongoDB database | **MongoDB Atlas** free tier — https://www.mongodb.com/atlas — recommended. (Hostinger doesn't host Mongo natively.) |
+| An X Developer app | Required for "Continue with X" OAuth — https://developer.x.com/en/portal/dashboard |
 
 ---
 
@@ -51,6 +52,22 @@ cp backend/.env.example backend/.env
 #   ADMIN_EMAIL=<your admin email>
 #   ADMIN_PASSWORD=<a strong password>
 #   FRONTEND_PUBLIC_URL=https://yourdomain.com
+#   X_OAUTH_CLIENT_ID=<your X OAuth 2.0 client ID>
+#   X_OAUTH_CLIENT_SECRET=<your X OAuth 2.0 client secret>
+#   X_OAUTH_REDIRECT_URI=https://yourdomain.com/oauth/x/callback
+#   X_OAUTH_SCOPES=tweet.read users.read offline.access
+```
+
+In the X Developer Portal, enable OAuth 2.0 and add the exact callback URL:
+
+```text
+https://yourdomain.com/oauth/x/callback
+```
+
+For local testing, also add:
+
+```text
+http://localhost:3000/oauth/x/callback
 ```
 
 ---
@@ -166,6 +183,7 @@ come from real data in your database.
 - [ ] `ADMIN_PASSWORD` — change from the example values
 - [ ] `RESEND_API_KEY` / `EMAIL_FROM` — required for OTP email delivery
 - [ ] `CORS_ORIGINS` — set to your real domain (not `*`)
+- [ ] `X_OAUTH_CLIENT_ID` / `X_OAUTH_CLIENT_SECRET` / `X_OAUTH_REDIRECT_URI` — required for X login
 - [ ] MongoDB Atlas IP allowlist — restrict to your server's IP
 
 ---

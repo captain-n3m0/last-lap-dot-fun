@@ -9,6 +9,7 @@ import TasksPage from "./pages/TasksPage";
 import About from "./pages/About";
 import Profile from "./pages/Profile";
 import AdminDashboard from "./pages/AdminDashboard";
+import XOAuthCallback from "./pages/XOAuthCallback";
 import LoadingScreen from "./components/LoadingScreen";
 import { Toaster } from "sonner";
 
@@ -37,6 +38,7 @@ export default function App() {
           <Routes>
             <Route path="/login" element={<RedirectIfAuth><Login /></RedirectIfAuth>} />
             <Route path="/register" element={<RedirectIfAuth><Register /></RedirectIfAuth>} />
+            <Route path="/oauth/x/callback" element={<XOAuthCallback />} />
             <Route path="/" element={<Protected><Dashboard /></Protected>} />
             <Route path="/leaderboard" element={<Protected><Leaderboard /></Protected>} />
             <Route path="/tasks" element={<Protected><TasksPage /></Protected>} />

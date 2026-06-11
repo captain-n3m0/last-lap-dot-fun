@@ -3,11 +3,10 @@ import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
 import api from "../lib/api";
 import WalletButton from "../components/WalletButton";
-import XLogo from "../components/XLogo";
+import XOAuthButton from "../components/XOAuthButton";
 import CyberFrameBorder, { CyberFrameFill, CyberFrameStroke } from "../components/CyberFrameBorder";
 import { Mail, Lock, Users, Flame, Trophy, Globe, ChevronLeft } from "lucide-react";
 import SkewCheckerFlag from "../components/SkewCheckerFlag";
-import { toast } from "sonner";
 
 function Stat({ icon: Icon, value, label, color, className = "" }) {
   return (
@@ -105,10 +104,6 @@ export default function Login() {
     else setErr(res.error);
   };
 
-  const handleXLogin = () => {
-    toast("X (TWITTER) OAUTH COMING SOON — USE EMAIL OR WALLET", { duration: 3500 });
-  };
-
   useEffect(() => {
     let mounted = true;
     api.get("/stats/global")
@@ -165,14 +160,7 @@ export default function Login() {
 
                 {mode === "choose" && (
                   <>
-                    <button
-                      onClick={handleXLogin}
-                      className="btn-cyber bg-[var(--purple)] hover:bg-[var(--purple-bright)] w-full flex items-center justify-center gap-3 py-3 text-white font-pixel text-[12px] cta-pulse"
-                      data-testid="continue-x-btn"
-                    >
-                      <XLogo size={16} />
-                      <span>CONTINUE WITH X (TWITTER)</span>
-                    </button>
+                    <XOAuthButton mode="signin" testId="continue-x-btn" />
 
                     <div className="my-4 flex items-center gap-3">
                       <div className="flex-1 h-px bg-[var(--border)]" />

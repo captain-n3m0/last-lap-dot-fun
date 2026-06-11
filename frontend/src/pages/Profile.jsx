@@ -4,8 +4,11 @@ import { Image, Mail, Palette, Shield, Upload, User, Wallet, X } from "lucide-re
 import Navbar from "../components/Navbar";
 import Footer from "../components/Footer";
 import WalletButton from "../components/WalletButton";
+import XLogo from "../components/XLogo";
+import XOAuthButton from "../components/XOAuthButton";
 import { useAuth } from "../contexts/AuthContext";
 import api, { formatApiErrorDetail } from "../lib/api";
+import { unlinkXOAuth } from "../lib/xOAuth";
 import { truncateAddress } from "../lib/wallet";
 import RacerAvatar, { AVATAR_COLORS, AVATAR_PRESETS } from "../components/RacerAvatar";
 
@@ -22,6 +25,7 @@ export default function Profile() {
   });
   const [saving, setSaving] = useState(false);
   const [walletBusy, setWalletBusy] = useState(false);
+  const [xBusy, setXBusy] = useState(false);
   const fileRef = useRef(null);
 
   useEffect(() => {
@@ -115,6 +119,20 @@ export default function Profile() {
       toast.error(formatApiErrorDetail(e.response?.data?.detail) || e.message);
     } finally {
       setWalletBusy(false);
+    }
+  };
+
+  const unlinkXAccount = async () => {
+    if (xBusy) return;
+    setXBusy(true);
+    try {
+      await unlinkXOAuth();
+      await refreshUser();
+      toast.success("X ACCOUNT UNLINKED");
+    } catch (e) {
+      toast.error(formatApiErrorDetail(e.response?.data?.detail) || e.message);
+    } finally {
+      setXBusy(false);
     }
   };
 
@@ -304,36 +322,72 @@ export default function Profile() {
             </div>
           </form>
 
-          <div className="card-ll p-5 card-animate">
-            <div className="flex items-center gap-2 mb-5">
-              <Wallet size={18} className="text-[var(--purple-bright)]" />
-              <div className="font-brush text-[22px] text-white">WALLET</div>
+          <div className="space-y-6">
+            <div className="card-ll p-5 card-animate">
+              <div className="flex items-center gap-2 mb-5">
+                <Wallet size={18} className="text-[var(--purple-bright)]" />
+                <div className="font-brush text-[22px] text-white">WALLET</div>
+              </div>
+
+              {user?.wallet_address ? (
+                <>
+                  <div className="font-pixel text-[10px] tracking-widest text-[var(--muted)]">CONNECTED</div>
+                  <div className="font-mono-crt text-[15px] text-white mt-2">
+                    {truncateAddress(user.wallet_address)}
+                  </div>
+                  <div className="font-pixel text-[9px] tracking-widest text-[var(--muted)] mt-2">
+                    CHAIN ID {user.wallet_chain_id || "—"}
+                  </div>
+                  <button
+                    type="button"
+                    disabled={walletBusy}
+                    onClick={unlinkWallet}
+                    className="btn-ghost-ll w-full mt-4"
+                    data-testid="profile-unlink-wallet"
+                  >
+                    {walletBusy ? "UNLINKING..." : "UNLINK WALLET"}
+                  </button>
+                </>
+              ) : (
+                <div className="mt-3">
+                  <WalletButton variant="link" onLinked={refreshUser} />
+                </div>
+              )}
             </div>
 
-            {user?.wallet_address ? (
-              <>
-                <div className="font-pixel text-[10px] tracking-widest text-[var(--muted)]">CONNECTED</div>
-                <div className="font-mono-crt text-[15px] text-white mt-2">
-                  {truncateAddress(user.wallet_address)}
-                </div>
-                <div className="font-pixel text-[9px] tracking-widest text-[var(--muted)] mt-2">
-                  CHAIN ID {user.wallet_chain_id || "—"}
-                </div>
-                <button
-                  type="button"
-                  disabled={walletBusy}
-                  onClick={unlinkWallet}
-                  className="btn-ghost-ll w-full mt-4"
-                  data-testid="profile-unlink-wallet"
-                >
-                  {walletBusy ? "UNLINKING..." : "UNLINK WALLET"}
-                </button>
-              </>
-            ) : (
-              <div className="mt-3">
-                <WalletButton variant="link" onLinked={refreshUser} />
+            <div className="card-ll p-5 card-animate">
+              <div className="flex items-center gap-2 mb-5">
+                <XLogo size={18} className="text-[var(--purple-bright)]" />
+                <div className="font-brush text-[22px] text-white">X ACCOUNT</div>
               </div>
-            )}
+
+              {user?.x_id ? (
+                <>
+                  <div className="font-pixel text-[10px] tracking-widest text-[var(--muted)]">CONNECTED</div>
+                  <div className="font-mono-crt text-[15px] text-white mt-2">
+                    @{user.x_username || user.username}
+                  </div>
+                  {user.x_name && (
+                    <div className="font-pixel text-[9px] tracking-widest text-[var(--muted)] mt-2">
+                      {String(user.x_name).toUpperCase()}
+                    </div>
+                  )}
+                  <button
+                    type="button"
+                    disabled={xBusy}
+                    onClick={unlinkXAccount}
+                    className="btn-ghost-ll w-full mt-4"
+                    data-testid="profile-unlink-x"
+                  >
+                    {xBusy ? "UNLINKING..." : "UNLINK X"}
+                  </button>
+                </>
+              ) : (
+                <div className="mt-3">
+                  <XOAuthButton mode="link" testId="profile-link-x" />
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </main>

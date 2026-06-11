@@ -10,6 +10,10 @@ import uuid
 import random
 import string
 import re
+import base64
+import hashlib
+import secrets
+from urllib.parse import urlencode, urlparse
 from datetime import datetime, timezone, timedelta
 from typing import List, Optional, Union
 
@@ -34,6 +38,14 @@ OTP_MAX_ATTEMPTS = int(os.environ.get("OTP_MAX_ATTEMPTS", "5"))
 RESEND_API_KEY = os.environ.get("RESEND_API_KEY", "")
 EMAIL_FROM = os.environ.get("EMAIL_FROM", "no-reply@lastlap.com")
 OTP_DEBUG = os.environ.get("OTP_DEBUG", "").lower() == "true" or not RESEND_API_KEY
+X_OAUTH_AUTHORIZE_URL = "https://x.com/i/oauth2/authorize"
+X_OAUTH_TOKEN_URL = "https://api.x.com/2/oauth2/token"
+X_OAUTH_ME_URL = "https://api.x.com/2/users/me"
+X_OAUTH_CLIENT_ID = os.environ.get("X_OAUTH_CLIENT_ID", "")
+X_OAUTH_CLIENT_SECRET = os.environ.get("X_OAUTH_CLIENT_SECRET", "")
+X_OAUTH_REDIRECT_URI = os.environ.get("X_OAUTH_REDIRECT_URI", "")
+X_OAUTH_SCOPES = os.environ.get("X_OAUTH_SCOPES", "tweet.read users.read offline.access")
+X_OAUTH_STATE_TTL_MINUTES = int(os.environ.get("X_OAUTH_STATE_TTL_MINUTES", "10"))
 
 mongo_url = os.environ['MONGO_URL']
 client = AsyncIOMotorClient(mongo_url)
@@ -141,6 +153,10 @@ def sanitize_user(user: dict) -> dict:
     user = dict(user)
     user.pop("_id", None)
     user.pop("password_hash", None)
+    user.pop("x_access_token", None)
+    user.pop("x_refresh_token", None)
+    user.pop("x_token_scope", None)
+    user.pop("x_token_expires_at", None)
     user.pop("otp_hash", None)
     user.pop("otp_expires_at", None)
     user.pop("otp_attempts", None)
@@ -165,6 +181,61 @@ def _slugify_task_id(value: str) -> str:
     if not slug:
         slug = f"task-{uuid.uuid4().hex[:8]}"
     return slug[:64]
+
+
+def _base64url(value: bytes) -> str:
+    return base64.urlsafe_b64encode(value).decode("utf-8").rstrip("=")
+
+
+def _pkce_challenge(verifier: str) -> str:
+    return _base64url(hashlib.sha256(verifier.encode("utf-8")).digest())
+
+
+def _oauth_state() -> str:
+    return secrets.token_urlsafe(32)
+
+
+def _oauth_verifier() -> str:
+    return secrets.token_urlsafe(64)[:128]
+
+
+def _frontend_origin_from_request(request: Request) -> str:
+    origin = request.headers.get("origin")
+    if origin:
+        return origin.rstrip("/")
+    referer = request.headers.get("referer", "").rstrip("/")
+    parsed = urlparse(referer)
+    if parsed.scheme and parsed.netloc:
+        origin = f"{parsed.scheme}://{parsed.netloc}"
+    if origin:
+        return origin.rstrip("/")
+    return os.environ.get("FRONTEND_PUBLIC_URL", "http://localhost:3000").rstrip("/")
+
+
+def _x_redirect_uri(request: Request) -> str:
+    if X_OAUTH_REDIRECT_URI:
+        return X_OAUTH_REDIRECT_URI
+    return f"{_frontend_origin_from_request(request)}/oauth/x/callback"
+
+
+def _normalize_x_username(username: str) -> str:
+    base = re.sub(r"[^a-z0-9_]+", "", (username or "").lower()).strip("_")
+    if len(base) < 3:
+        base = f"x_rider_{uuid.uuid4().hex[:6]}"
+    return base[:20]
+
+
+async def _unique_username(base: str) -> str:
+    username = _normalize_x_username(base)
+    candidate = username
+    suffix = 1
+    max_base = 20
+    while await db.users.find_one({"username": candidate}):
+        suffix += 1
+        suffix_text = str(suffix)
+        max_base = max(3, 20 - len(suffix_text) - 1)
+        candidate = f"{username[:max_base]}_{suffix_text}"
+    return candidate
 
 
 def _utcnow() -> datetime:
@@ -334,6 +405,25 @@ async def get_current_user(request: Request, creds: Optional[HTTPAuthorizationCr
     user = await db.users.find_one({"id": payload["sub"]}, {"_id": 0})
     if not user:
         raise HTTPException(status_code=401, detail="User not found")
+    user.pop("password_hash", None)
+    return user
+
+
+async def get_optional_current_user(request: Request, creds: Optional[HTTPAuthorizationCredentials] = Depends(security)) -> Optional[dict]:
+    token = None
+    if creds and creds.scheme.lower() == "bearer":
+        token = creds.credentials
+    if not token:
+        token = request.cookies.get("access_token")
+    if not token:
+        return None
+    try:
+        payload = decode_token(token)
+    except jwt.InvalidTokenError:
+        return None
+    user = await db.users.find_one({"id": payload["sub"]}, {"_id": 0})
+    if not user:
+        return None
     user.pop("password_hash", None)
     return user
 
@@ -667,6 +757,16 @@ class WalletVerifyIn(BaseModel):
     chain_id: int = 1
 
 
+class XOAuthStartIn(BaseModel):
+    mode: str = Field("signin", pattern=r"^(signin|link)$")
+    referral_code: Optional[str] = None
+
+
+class XOAuthCallbackIn(BaseModel):
+    code: str
+    state: str
+
+
 def _normalize_addr(addr: str) -> str:
     a = addr.strip().lower()
     if not a.startswith("0x") or len(a) != 42:
@@ -740,9 +840,7 @@ async def wallet_verify(data: WalletVerifyIn):
         user_id = str(uuid.uuid4())
         user = {
             "id": user_id,
-            "email": None,
             "username": username,
-            "password_hash": None,
             "display_name": username,
             "role": "ROOKIE RIDER",
             "title": "ROOKIE RACER",
@@ -811,6 +909,249 @@ async def wallet_unlink(current=Depends(get_current_user)):
     if not current.get("email") or not current.get("password_hash"):
         raise HTTPException(status_code=400, detail="Cannot unlink wallet from a wallet-only account")
     await db.users.update_one({"id": current["id"]}, {"$unset": {"wallet_address": "", "wallet_chain_id": ""}})
+    user = await db.users.find_one({"id": current["id"]}, {"_id": 0, "password_hash": 0})
+    return {"ok": True, "user": sanitize_user(user)}
+
+
+# --- X / Twitter OAuth ---
+def _require_x_oauth_config() -> None:
+    if not X_OAUTH_CLIENT_ID:
+        raise HTTPException(status_code=500, detail="X OAuth is not configured")
+
+
+def _x_token_auth_header() -> dict:
+    if not X_OAUTH_CLIENT_SECRET:
+        return {}
+    raw = f"{X_OAUTH_CLIENT_ID}:{X_OAUTH_CLIENT_SECRET}".encode("utf-8")
+    return {"Authorization": f"Basic {base64.b64encode(raw).decode('utf-8')}"}
+
+
+async def _award_referral_if_needed(referral_code: Optional[str], user: dict) -> None:
+    if not referral_code or user.get("referred_by"):
+        return
+    ref_owner = await db.users.find_one({"referral_code": referral_code.upper()}, {"_id": 0})
+    if not ref_owner or ref_owner["id"] == user["id"]:
+        return
+    existing_ref = await db.referrals.find_one({"owner_id": ref_owner["id"], "invitee_id": user["id"]})
+    if existing_ref:
+        return
+    now_iso = _utcnow().isoformat()
+    await db.referrals.insert_one({
+        "id": str(uuid.uuid4()),
+        "owner_id": ref_owner["id"],
+        "invitee_id": user["id"],
+        "invitee_username": user.get("username"),
+        "status": "verified",
+        "lp_earned": 50,
+        "created_at": now_iso,
+        "verified_at": now_iso,
+    })
+    await db.users.update_one(
+        {"id": user["id"]},
+        {"$set": {"referred_by": ref_owner["id"]}},
+    )
+    await db.users.update_one({"id": ref_owner["id"]}, {"$inc": {"lap_points": 50}})
+
+
+def _x_token_fields(token_data: dict) -> dict:
+    now = _utcnow()
+    expires_in = token_data.get("expires_in")
+    token_fields = {
+        "x_access_token": token_data.get("access_token"),
+        "x_refresh_token": token_data.get("refresh_token"),
+        "x_token_scope": token_data.get("scope"),
+        "x_connected_at": now.isoformat(),
+    }
+    if expires_in:
+        token_fields["x_token_expires_at"] = (now + timedelta(seconds=int(expires_in))).isoformat()
+    return {k: v for k, v in token_fields.items() if v is not None}
+
+
+def _exchange_x_code(code: str, state_doc: dict) -> dict:
+    data = {
+        "grant_type": "authorization_code",
+        "client_id": X_OAUTH_CLIENT_ID,
+        "code": code,
+        "redirect_uri": state_doc["redirect_uri"],
+        "code_verifier": state_doc["code_verifier"],
+    }
+    resp = requests.post(
+        X_OAUTH_TOKEN_URL,
+        headers={
+            "Content-Type": "application/x-www-form-urlencoded",
+            **_x_token_auth_header(),
+        },
+        data=data,
+        timeout=15,
+    )
+    if resp.status_code >= 400:
+        logger.error("X OAuth token exchange failed: %s %s", resp.status_code, resp.text)
+        raise HTTPException(status_code=502, detail="X OAuth token exchange failed")
+    return resp.json()
+
+
+def _fetch_x_profile(access_token: str) -> dict:
+    resp = requests.get(
+        X_OAUTH_ME_URL,
+        headers={"Authorization": f"Bearer {access_token}"},
+        params={"user.fields": "profile_image_url,verified,protected"},
+        timeout=15,
+    )
+    if resp.status_code >= 400:
+        logger.error("X OAuth user lookup failed: %s %s", resp.status_code, resp.text)
+        raise HTTPException(status_code=502, detail="X profile lookup failed")
+    data = resp.json().get("data")
+    if not data or not data.get("id"):
+        raise HTTPException(status_code=502, detail="X profile lookup returned no user")
+    return data
+
+
+async def _upsert_x_user(profile: dict, token_data: dict, referral_code: Optional[str]) -> dict:
+    x_id = str(profile["id"])
+    token_fields = _x_token_fields(token_data)
+    profile_fields = {
+        "x_id": x_id,
+        "x_username": profile.get("username"),
+        "x_name": profile.get("name"),
+        "x_profile_image_url": profile.get("profile_image_url"),
+        "x_verified": profile.get("verified", False),
+        **token_fields,
+    }
+    existing = await db.users.find_one({"x_id": x_id}, {"_id": 0})
+    if existing:
+        await db.users.update_one({"id": existing["id"]}, {"$set": profile_fields})
+        return await db.users.find_one({"id": existing["id"]}, {"_id": 0})
+
+    username = await _unique_username(profile.get("username") or profile.get("name") or f"x_{x_id}")
+    while True:
+        code = gen_referral_code()
+        if not await db.users.find_one({"referral_code": code}):
+            break
+    now_iso = _utcnow().isoformat()
+    user = {
+        "id": str(uuid.uuid4()),
+        "username": username,
+        "display_name": profile.get("name") or username,
+        "role": "ROOKIE RIDER",
+        "title": "ROOKIE RACER",
+        "lap_points": 0,
+        "tasks_completed": 0,
+        "daily_streak": 0,
+        "referral_code": code,
+        "referred_by": None,
+        "is_admin": False,
+        "avatar_color": random.choice(AVATAR_COLORS),
+        "avatar_preset": "helmet",
+        "avatar_url": profile.get("profile_image_url"),
+        "joined_on": now_iso,
+        "last_active": now_iso,
+        "email_verified": False,
+        **profile_fields,
+    }
+    await db.users.insert_one(user)
+    await _award_referral_if_needed(referral_code, user)
+    return await db.users.find_one({"id": user["id"]}, {"_id": 0})
+
+
+@api_router.post("/auth/x/start")
+async def x_oauth_start(data: XOAuthStartIn, request: Request, current=Depends(get_optional_current_user)):
+    _require_x_oauth_config()
+    if data.mode == "link" and not current:
+        raise HTTPException(status_code=401, detail="Log in before linking X")
+    state = _oauth_state()
+    code_verifier = _oauth_verifier()
+    redirect_uri = _x_redirect_uri(request)
+    expires_at = _utcnow() + timedelta(minutes=X_OAUTH_STATE_TTL_MINUTES)
+    await db.oauth_states.insert_one({
+        "state": state,
+        "provider": "x",
+        "code_verifier": code_verifier,
+        "redirect_uri": redirect_uri,
+        "mode": data.mode,
+        "user_id": current.get("id") if current else None,
+        "referral_code": data.referral_code.upper() if data.referral_code else None,
+        "used": False,
+        "created_at": _utcnow().isoformat(),
+        "expires_at": expires_at.isoformat(),
+    })
+    params = {
+        "response_type": "code",
+        "client_id": X_OAUTH_CLIENT_ID,
+        "redirect_uri": redirect_uri,
+        "scope": X_OAUTH_SCOPES,
+        "state": state,
+        "code_challenge": _pkce_challenge(code_verifier),
+        "code_challenge_method": "S256",
+    }
+    return {"authorization_url": f"{X_OAUTH_AUTHORIZE_URL}?{urlencode(params)}", "state": state}
+
+
+@api_router.post("/auth/x/callback", response_model=TokenOut)
+async def x_oauth_callback(data: XOAuthCallbackIn):
+    _require_x_oauth_config()
+    state_doc = await db.oauth_states.find_one({"state": data.state, "provider": "x", "used": False})
+    if not state_doc:
+        raise HTTPException(status_code=400, detail="Invalid OAuth state")
+    expires_at = _parse_dt(state_doc.get("expires_at"))
+    if not expires_at or _utcnow() > expires_at:
+        await db.oauth_states.update_one({"_id": state_doc["_id"]}, {"$set": {"used": True}})
+        raise HTTPException(status_code=400, detail="OAuth state expired")
+
+    token_data = _exchange_x_code(data.code, state_doc)
+    profile = _fetch_x_profile(token_data["access_token"])
+    x_id = str(profile["id"])
+    token_fields = _x_token_fields(token_data)
+    profile_fields = {
+        "x_id": x_id,
+        "x_username": profile.get("username"),
+        "x_name": profile.get("name"),
+        "x_profile_image_url": profile.get("profile_image_url"),
+        "x_verified": profile.get("verified", False),
+        **token_fields,
+    }
+
+    if state_doc.get("mode") == "link":
+        target = await db.users.find_one({"id": state_doc.get("user_id")}, {"_id": 0})
+        if not target:
+            raise HTTPException(status_code=401, detail="Linked account no longer exists")
+        existing = await db.users.find_one({"x_id": x_id}, {"_id": 0})
+        if existing and existing["id"] != target["id"]:
+            raise HTTPException(status_code=400, detail="X account already linked to another rider")
+        update = dict(profile_fields)
+        if profile.get("profile_image_url") and not target.get("avatar_url"):
+            update["avatar_url"] = profile.get("profile_image_url")
+        await db.users.update_one({"id": target["id"]}, {"$set": update})
+        user = await db.users.find_one({"id": target["id"]}, {"_id": 0})
+    else:
+        user = await _upsert_x_user(profile, token_data, state_doc.get("referral_code"))
+
+    await db.oauth_states.update_one(
+        {"_id": state_doc["_id"]},
+        {"$set": {"used": True, "used_at": _utcnow().isoformat(), "x_id": x_id}},
+    )
+    token = create_token(user["id"], user.get("email") or f"x:{x_id}")
+    return TokenOut(access_token=token, user=sanitize_user(user))
+
+
+@api_router.post("/auth/x/unlink")
+async def x_oauth_unlink(current=Depends(get_current_user)):
+    if not current.get("email") and not current.get("wallet_address"):
+        raise HTTPException(status_code=400, detail="Cannot unlink X from an X-only account")
+    await db.users.update_one(
+        {"id": current["id"]},
+        {"$unset": {
+            "x_id": "",
+            "x_username": "",
+            "x_name": "",
+            "x_profile_image_url": "",
+            "x_verified": "",
+            "x_access_token": "",
+            "x_refresh_token": "",
+            "x_token_scope": "",
+            "x_token_expires_at": "",
+            "x_connected_at": "",
+        }},
+    )
     user = await db.users.find_one({"id": current["id"]}, {"_id": 0, "password_hash": 0})
     return {"ok": True, "user": sanitize_user(user)}
 
@@ -1223,9 +1564,12 @@ async def seed():
     await db.users.create_index("username", unique=True)
     await db.users.create_index("referral_code", unique=True)
     await db.users.create_index("wallet_address", unique=True, sparse=True)
+    await db.users.create_index("x_id", unique=True, sparse=True)
     await db.tasks.create_index("id", unique=True)
     await db.user_tasks.create_index([("user_id", 1), ("task_id", 1)], unique=True)
     await db.wallet_nonces.create_index("nonce")
+    await db.oauth_states.create_index("state", unique=True)
+    await db.oauth_states.create_index("expires_at")
     await db.admin_events.create_index("created_at")
 
     await db.users.update_many(
