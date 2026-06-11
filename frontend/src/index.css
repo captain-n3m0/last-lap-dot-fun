@@ -47,6 +47,8 @@ html, body, #root {
     background-color: var(--bg);
     color: var(--text);
     min-height: 100vh;
+    max-width: 100%;
+    overflow-x: clip;
 }
 
 body {
@@ -344,11 +346,13 @@ body {
 .page-transition {
     position: relative;
     animation: page-enter 0.6s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+    max-width: 100%;
+    overflow-x: clip;
 }
 .page-transition::after {
     content: '';
     position: fixed;
-    inset: -20% -20% -20% -20%;
+    inset: 0;
     background:
         linear-gradient(120deg, transparent 35%, rgba(139, 92, 246, 0.25) 50%, transparent 65%),
         radial-gradient(600px circle at 15% 20%, rgba(59, 130, 246, 0.25), transparent 60%);
