@@ -70,6 +70,16 @@ def auth_headers(user_token):
     return {"Authorization": f"Bearer {user_token}", "Content-Type": "application/json"}
 
 
+@pytest.fixture(scope="session")
+def admin_headers(session):
+    email = os.environ.get("ADMIN_EMAIL", "admin@lastlap.com")
+    password = os.environ.get("ADMIN_PASSWORD", "LastLap2025!")
+    r = session.post(f"{API}/auth/login", json={"email": email, "password": password}, timeout=30)
+    if r.status_code != 200:
+        pytest.skip("Admin user is not available in this backend")
+    return {"Authorization": f"Bearer {r.json()['access_token']}", "Content-Type": "application/json"}
+
+
 # --- Health ---
 def test_health(session):
     r = session.get(f"{API}/", timeout=15)
@@ -222,6 +232,54 @@ class TestTasks:
     def test_start_invalid_task(self, session, auth_headers):
         r = session.post(f"{API}/tasks/does-not-exist/start", headers=auth_headers, timeout=15)
         assert r.status_code == 404
+
+
+# --- Admin ---
+class TestAdmin:
+    def test_regular_user_cannot_access_admin(self, session, auth_headers):
+        r = session.get(f"{API}/admin/overview", headers=auth_headers, timeout=15)
+        assert r.status_code == 403
+
+    def test_admin_overview_shape(self, session, admin_headers):
+        r = session.get(f"{API}/admin/overview", headers=admin_headers, timeout=15)
+        assert r.status_code == 200, r.text
+        d = r.json()
+        for key in ("total_users", "active_tasks", "total_lp", "completed_tasks", "recent_users"):
+            assert key in d
+        assert isinstance(d["recent_users"], list)
+
+    def test_admin_task_crud(self, session, admin_headers):
+        task_id = f"codex-test-{uuid.uuid4().hex[:8]}"
+        payload = {
+            "id": task_id,
+            "title": "Codex Test Task",
+            "description": "Temporary task for admin CRUD coverage.",
+            "platform": "LASTLAP",
+            "reward_lp": 7,
+            "external_url": "#",
+            "order": 999,
+            "is_active": True,
+        }
+        created = session.post(f"{API}/admin/tasks", json=payload, headers=admin_headers, timeout=15)
+        assert created.status_code == 200, created.text
+        assert created.json()["task"]["id"] == task_id
+
+        patched = session.patch(
+            f"{API}/admin/tasks/{task_id}",
+            json={"is_active": False, "reward_lp": 11},
+            headers=admin_headers,
+            timeout=15,
+        )
+        assert patched.status_code == 200, patched.text
+        assert patched.json()["task"]["is_active"] is False
+        assert patched.json()["task"]["reward_lp"] == 11
+
+        tasks = session.get(f"{API}/admin/tasks", headers=admin_headers, timeout=15)
+        assert tasks.status_code == 200
+        assert any(t["id"] == task_id for t in tasks.json())
+
+        deleted = session.delete(f"{API}/admin/tasks/{task_id}", headers=admin_headers, timeout=15)
+        assert deleted.status_code == 200, deleted.text
 
 
 # --- Leaderboard ---

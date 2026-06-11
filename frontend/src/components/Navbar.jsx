@@ -1,10 +1,12 @@
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
-import { ChevronDown, LogOut, Settings, User, Wallet } from "lucide-react";
+import { ChevronDown, LogOut, Settings, Shield, User, Wallet } from "lucide-react";
 import { useState, useRef, useEffect } from "react";
 import { truncateAddress } from "../lib/wallet";
 import WalletButton from "./WalletButton";
 import RacerAvatar from "./RacerAvatar";
+
+const ADMIN_ROLES = new Set(["PIT BOSS", "ADMIN", "SUPER ADMIN"]);
 
 export default function Navbar() {
   const { user, logout } = useAuth();
@@ -12,6 +14,7 @@ export default function Navbar() {
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const menuRef = useRef(null);
+  const isAdmin = Boolean(user?.is_admin || ADMIN_ROLES.has(user?.role));
 
   useEffect(() => {
     const handler = (e) => { if (menuRef.current && !menuRef.current.contains(e.target)) setOpen(false); };
@@ -37,10 +40,11 @@ export default function Navbar() {
           <span><span className="text-white">LAST</span><span className="text-[var(--purple)]">LAP</span></span>
         </Link>
 
-        <div className="hidden md:flex items-center gap-2">
+        <div className="hidden lg:flex items-center gap-2">
           <NavLink to="/tasks" label="RIDER GARAGE" testid="nav-garage" />
           <NavLink to="/about" label="ABOUT" testid="nav-about" />
           <NavLink to="/leaderboard" label="LEADERBOARD" testid="nav-community" />
+          {isAdmin && <NavLink to="/admin" label="PIT CONTROL" testid="nav-admin" />}
         </div>
 
         <div className="relative" ref={menuRef}>
@@ -76,6 +80,12 @@ export default function Navbar() {
                 className="w-full flex items-center gap-2 px-3 py-2 text-left text-white/90 hover:bg-[var(--bg-card-2)] rounded font-pixel text-[10px] tracking-widest" data-testid="dropdown-settings">
                 <Settings size={14} /> PROFILE SETTINGS
               </Link>
+              {isAdmin && (
+                <Link to="/admin" onClick={() => setOpen(false)}
+                  className="w-full flex items-center gap-2 px-3 py-2 text-left text-white/90 hover:bg-[var(--bg-card-2)] rounded font-pixel text-[10px] tracking-widest" data-testid="dropdown-admin">
+                  <Shield size={14} /> PIT CONTROL
+                </Link>
+              )}
               <button onClick={() => { setOpen(false); logout(); navigate("/login"); }}
                 className="w-full flex items-center gap-2 px-3 py-2 text-left text-[var(--red)] hover:bg-[var(--bg-card-2)] rounded font-pixel text-[10px] tracking-widest" data-testid="logout-button">
                 <LogOut size={14} /> LOG OUT

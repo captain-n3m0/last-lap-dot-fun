@@ -9,6 +9,7 @@ import logging
 import uuid
 import random
 import string
+import re
 from datetime import datetime, timezone, timedelta
 from typing import List, Optional, Union
 
@@ -47,6 +48,7 @@ logger = logging.getLogger(__name__)
 
 AVATAR_COLORS = ["#8B5CF6", "#EF4444", "#F59E0B", "#10B981", "#3B82F6", "#EC4899"]
 AVATAR_PRESETS = ["helmet", "bolt", "flag", "skull", "wheel", "initial"]
+ADMIN_ROLES = {"PIT BOSS", "ADMIN", "SUPER ADMIN"}
 DAILY_CHECKIN_TASK_ID = "daily-checkin"
 DEFAULT_TASKS = [
     {
@@ -145,6 +147,24 @@ def sanitize_user(user: dict) -> dict:
     user.pop("otp_last_sent_at", None)
     user.pop("otp_debug_code", None)
     return user
+
+
+def _is_admin_user(user: Optional[dict]) -> bool:
+    if not user:
+        return False
+    admin_email = os.environ.get("ADMIN_EMAIL", "admin@lastlap.com").lower()
+    return bool(
+        user.get("is_admin")
+        or user.get("role") in ADMIN_ROLES
+        or user.get("email", "").lower() == admin_email
+    )
+
+
+def _slugify_task_id(value: str) -> str:
+    slug = re.sub(r"[^a-z0-9]+", "-", value.lower()).strip("-")
+    if not slug:
+        slug = f"task-{uuid.uuid4().hex[:8]}"
+    return slug[:64]
 
 
 def _utcnow() -> datetime:
@@ -318,6 +338,12 @@ async def get_current_user(request: Request, creds: Optional[HTTPAuthorizationCr
     return user
 
 
+async def require_admin(current=Depends(get_current_user)) -> dict:
+    if not _is_admin_user(current):
+        raise HTTPException(status_code=403, detail="Admin access required")
+    return current
+
+
 # --- Models ---
 class RegisterIn(BaseModel):
     email: EmailStr
@@ -370,6 +396,44 @@ class TaskOut(BaseModel):
     status: str  # "available" | "started" | "completed"
 
 
+class AdminTaskIn(BaseModel):
+    id: Optional[str] = Field(None, min_length=3, max_length=64, pattern=r"^[a-z0-9][a-z0-9-]*$")
+    title: str = Field(min_length=3, max_length=80)
+    description: str = Field(min_length=3, max_length=240)
+    platform: str = Field(min_length=1, max_length=24)
+    reward_lp: int = Field(ge=0, le=100000)
+    external_url: Optional[str] = Field("#", max_length=500)
+    order: int = Field(100, ge=0, le=10000)
+    is_active: bool = True
+    cadence: Optional[str] = Field(None, pattern=r"^(daily|once)$")
+
+
+class AdminTaskPatch(BaseModel):
+    title: Optional[str] = Field(None, min_length=3, max_length=80)
+    description: Optional[str] = Field(None, min_length=3, max_length=240)
+    platform: Optional[str] = Field(None, min_length=1, max_length=24)
+    reward_lp: Optional[int] = Field(None, ge=0, le=100000)
+    external_url: Optional[str] = Field(None, max_length=500)
+    order: Optional[int] = Field(None, ge=0, le=10000)
+    is_active: Optional[bool] = None
+    cadence: Optional[str] = Field(None, pattern=r"^(daily|once)$")
+
+
+class AdminUserPatch(BaseModel):
+    role: Optional[str] = Field(None, min_length=2, max_length=40)
+    title: Optional[str] = Field(None, min_length=2, max_length=40)
+    lap_points: Optional[int] = Field(None, ge=0, le=10000000)
+    tasks_completed: Optional[int] = Field(None, ge=0, le=1000000)
+    daily_streak: Optional[int] = Field(None, ge=0, le=10000)
+    is_admin: Optional[bool] = None
+    email_verified: Optional[bool] = None
+
+
+class AdminPointsAdjustIn(BaseModel):
+    delta: int = Field(ge=-100000, le=100000)
+    reason: Optional[str] = Field(None, max_length=160)
+
+
 class LeaderboardEntry(BaseModel):
     rank: int
     username: str
@@ -418,6 +482,7 @@ async def register(data: RegisterIn):
         "daily_streak": 0,
         "referral_code": code,
         "referred_by": referred_by,
+        "is_admin": False,
         "avatar_color": random.choice(AVATAR_COLORS),
         "avatar_preset": random.choice(AVATAR_PRESETS),
         "joined_on": now_iso,
@@ -686,6 +751,7 @@ async def wallet_verify(data: WalletVerifyIn):
             "daily_streak": 0,
             "referral_code": code,
             "referred_by": None,
+            "is_admin": False,
             "avatar_color": random.choice(AVATAR_COLORS),
             "avatar_preset": random.choice(AVATAR_PRESETS),
             "wallet_address": address,
@@ -749,10 +815,192 @@ async def wallet_unlink(current=Depends(get_current_user)):
     return {"ok": True, "user": sanitize_user(user)}
 
 
+# --- Admin ---
+async def _task_engagement_counts() -> dict:
+    rows = await db.user_tasks.aggregate([
+        {"$group": {
+            "_id": {"task_id": "$task_id", "status": "$status"},
+            "count": {"$sum": 1},
+        }},
+    ]).to_list(1000)
+    counts = {}
+    for row in rows:
+        task_id = row["_id"]["task_id"]
+        status = row["_id"].get("status", "unknown")
+        counts.setdefault(task_id, {"started_count": 0, "completion_count": 0})
+        if status == "completed":
+            counts[task_id]["completion_count"] += row["count"]
+        elif status == "started":
+            counts[task_id]["started_count"] += row["count"]
+    return counts
+
+
+def _normalize_task_payload(payload: dict, task_id: Optional[str] = None) -> dict:
+    normalized = dict(payload)
+    if "platform" in normalized and normalized["platform"] is not None:
+        normalized["platform"] = normalized["platform"].strip().upper()
+    if "title" in normalized and normalized["title"] is not None:
+        normalized["title"] = normalized["title"].strip()
+    if "description" in normalized and normalized["description"] is not None:
+        normalized["description"] = normalized["description"].strip()
+    if "external_url" in normalized:
+        normalized["external_url"] = (normalized.get("external_url") or "#").strip() or "#"
+    if normalized.get("cadence") == "once":
+        normalized.pop("cadence", None)
+    if task_id:
+        normalized["id"] = task_id
+    return normalized
+
+
+@api_router.get("/admin/overview")
+async def admin_overview(admin=Depends(require_admin)):
+    user_filter = {"is_bot": {"$ne": True}}
+    total_users = await db.users.count_documents(user_filter)
+    verified_users = await db.users.count_documents({**user_filter, "email_verified": True})
+    admin_users = await db.users.count_documents({**user_filter, "is_admin": True})
+    total_tasks = await db.tasks.count_documents({})
+    active_tasks = await db.tasks.count_documents({"is_active": {"$ne": False}})
+    completed_tasks = await db.user_tasks.count_documents({"status": "completed"})
+    started_tasks = await db.user_tasks.count_documents({"status": "started"})
+    pending_referrals = await db.referrals.count_documents({"status": "pending"})
+    verified_referrals = await db.referrals.count_documents({"status": "verified"})
+    totals = await db.users.aggregate([
+        {"$match": user_filter},
+        {"$group": {
+            "_id": None,
+            "lap_points": {"$sum": {"$ifNull": ["$lap_points", 0]}},
+            "tasks_completed": {"$sum": {"$ifNull": ["$tasks_completed", 0]}},
+        }},
+    ]).to_list(1)
+    totals = totals[0] if totals else {}
+    recent_users = await db.users.find(user_filter, {"_id": 0, "password_hash": 0}).sort("joined_on", -1).to_list(6)
+    return {
+        "total_users": total_users,
+        "verified_users": verified_users,
+        "admin_users": admin_users,
+        "total_tasks": total_tasks,
+        "active_tasks": active_tasks,
+        "completed_tasks": completed_tasks,
+        "started_tasks": started_tasks,
+        "pending_referrals": pending_referrals,
+        "verified_referrals": verified_referrals,
+        "total_lp": totals.get("lap_points", 0),
+        "total_tasks_completed": totals.get("tasks_completed", 0),
+        "recent_users": [sanitize_user(u) for u in recent_users],
+    }
+
+
+@api_router.get("/admin/tasks")
+async def admin_list_tasks(admin=Depends(require_admin)):
+    tasks = await db.tasks.find({}, {"_id": 0}).sort("order", 1).to_list(500)
+    counts = await _task_engagement_counts()
+    return [
+        {
+            **task,
+            "is_active": task.get("is_active", True),
+            "cadence": task.get("cadence", "once"),
+            **counts.get(task["id"], {"started_count": 0, "completion_count": 0}),
+        }
+        for task in tasks
+    ]
+
+
+@api_router.post("/admin/tasks")
+async def admin_create_task(data: AdminTaskIn, admin=Depends(require_admin)):
+    task_id = data.id or _slugify_task_id(data.title)
+    if await db.tasks.find_one({"id": task_id}):
+        raise HTTPException(status_code=400, detail="Task id already exists")
+    task = _normalize_task_payload(data.model_dump(exclude_none=True), task_id=task_id)
+    await db.tasks.insert_one(task)
+    created = await db.tasks.find_one({"id": task_id}, {"_id": 0})
+    return {"ok": True, "task": {**created, "cadence": created.get("cadence", "once")}}
+
+
+@api_router.patch("/admin/tasks/{task_id}")
+async def admin_update_task(task_id: str, data: AdminTaskPatch, admin=Depends(require_admin)):
+    existing = await db.tasks.find_one({"id": task_id}, {"_id": 0})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Task not found")
+    fields_set = getattr(data, "model_fields_set", set())
+    update = data.model_dump(exclude_unset=True, exclude_none=False)
+    update = _normalize_task_payload(update)
+    if not update and "cadence" not in fields_set:
+        return {"ok": True, "task": {**existing, "cadence": existing.get("cadence", "once")}}
+    update_doc = {}
+    if update:
+        update_doc["$set"] = {k: v for k, v in update.items() if not (k == "cadence" and v is None)}
+    if "cadence" in fields_set and update.get("cadence") is None:
+        update_doc["$unset"] = {"cadence": ""}
+    await db.tasks.update_one({"id": task_id}, update_doc)
+    task = await db.tasks.find_one({"id": task_id}, {"_id": 0})
+    return {"ok": True, "task": {**task, "cadence": task.get("cadence", "once")}}
+
+
+@api_router.delete("/admin/tasks/{task_id}")
+async def admin_delete_task(task_id: str, admin=Depends(require_admin)):
+    result = await db.tasks.delete_one({"id": task_id})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Task not found")
+    await db.user_tasks.delete_many({"task_id": task_id})
+    return {"ok": True, "deleted": task_id}
+
+
+@api_router.get("/admin/users")
+async def admin_list_users(q: str = "", limit: int = 50, admin=Depends(require_admin)):
+    safe_limit = max(1, min(limit, 200))
+    user_filter = {"is_bot": {"$ne": True}}
+    query = q.strip()
+    if query:
+        user_filter["$or"] = [
+            {"username": {"$regex": re.escape(query), "$options": "i"}},
+            {"email": {"$regex": re.escape(query), "$options": "i"}},
+            {"display_name": {"$regex": re.escape(query), "$options": "i"}},
+        ]
+    total = await db.users.count_documents(user_filter)
+    users = await db.users.find(user_filter, {"_id": 0, "password_hash": 0}).sort("joined_on", -1).to_list(safe_limit)
+    return {"total": total, "users": [sanitize_user(u) for u in users]}
+
+
+@api_router.patch("/admin/users/{user_id}")
+async def admin_update_user(user_id: str, data: AdminUserPatch, admin=Depends(require_admin)):
+    target = await db.users.find_one({"id": user_id}, {"_id": 0})
+    if not target:
+        raise HTTPException(status_code=404, detail="User not found")
+    update = data.model_dump(exclude_unset=True)
+    if admin["id"] == user_id and update.get("is_admin") is False:
+        raise HTTPException(status_code=400, detail="You cannot remove your own admin access")
+    if not update:
+        return {"ok": True, "user": sanitize_user(target)}
+    await db.users.update_one({"id": user_id}, {"$set": update})
+    user = await db.users.find_one({"id": user_id}, {"_id": 0, "password_hash": 0})
+    return {"ok": True, "user": sanitize_user(user)}
+
+
+@api_router.post("/admin/users/{user_id}/points")
+async def admin_adjust_points(user_id: str, data: AdminPointsAdjustIn, admin=Depends(require_admin)):
+    target = await db.users.find_one({"id": user_id}, {"_id": 0})
+    if not target:
+        raise HTTPException(status_code=404, detail="User not found")
+    next_points = max(0, int(target.get("lap_points", 0)) + data.delta)
+    now_iso = _utcnow().isoformat()
+    await db.users.update_one({"id": user_id}, {"$set": {"lap_points": next_points}})
+    await db.admin_events.insert_one({
+        "id": str(uuid.uuid4()),
+        "type": "points_adjustment",
+        "admin_id": admin["id"],
+        "target_user_id": user_id,
+        "delta": data.delta,
+        "reason": data.reason or "",
+        "created_at": now_iso,
+    })
+    user = await db.users.find_one({"id": user_id}, {"_id": 0, "password_hash": 0})
+    return {"ok": True, "user": sanitize_user(user)}
+
+
 # --- Tasks ---
 @api_router.get("/tasks")
 async def list_tasks(current=Depends(get_current_user)):
-    tasks = await db.tasks.find({}, {"_id": 0}).sort("order", 1).to_list(100)
+    tasks = await db.tasks.find({"is_active": {"$ne": False}}, {"_id": 0}).sort("order", 1).to_list(100)
     user_tasks = await db.user_tasks.find({"user_id": current["id"]}, {"_id": 0}).to_list(500)
     status_map = {ut["task_id"]: ut["status"] for ut in user_tasks}
     task_map = {ut["task_id"]: ut for ut in user_tasks}
@@ -767,7 +1015,7 @@ async def list_tasks(current=Depends(get_current_user)):
 
 @api_router.post("/tasks/{task_id}/start")
 async def start_task(task_id: str, current=Depends(get_current_user)):
-    task = await db.tasks.find_one({"id": task_id}, {"_id": 0})
+    task = await db.tasks.find_one({"id": task_id, "is_active": {"$ne": False}}, {"_id": 0})
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
     existing = await db.user_tasks.find_one({"user_id": current["id"], "task_id": task_id})
@@ -796,7 +1044,7 @@ async def start_task(task_id: str, current=Depends(get_current_user)):
 
 @api_router.post("/tasks/{task_id}/complete")
 async def complete_task(task_id: str, current=Depends(get_current_user)):
-    task = await db.tasks.find_one({"id": task_id}, {"_id": 0})
+    task = await db.tasks.find_one({"id": task_id, "is_active": {"$ne": False}}, {"_id": 0})
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
     existing = await db.user_tasks.find_one({"user_id": current["id"], "task_id": task_id})
@@ -978,10 +1226,15 @@ async def seed():
     await db.tasks.create_index("id", unique=True)
     await db.user_tasks.create_index([("user_id", 1), ("task_id", 1)], unique=True)
     await db.wallet_nonces.create_index("nonce")
+    await db.admin_events.create_index("created_at")
 
     await db.users.update_many(
         {"avatar_preset": {"$exists": False}},
         {"$set": {"avatar_preset": "helmet"}},
+    )
+    await db.users.update_many(
+        {"is_admin": {"$exists": False}},
+        {"$set": {"is_admin": False}},
     )
 
     task_count = await db.tasks.count_documents({})
@@ -1006,6 +1259,7 @@ async def seed():
             "display_name": "Admin",
             "role": "PIT BOSS",
             "title": "TRACK MARSHAL",
+            "is_admin": True,
             "lap_points": 0,
             "tasks_completed": 0,
             "daily_streak": 0,
@@ -1015,8 +1269,11 @@ async def seed():
             "avatar_preset": "helmet",
             "joined_on": datetime.now(timezone.utc).isoformat(),
         })
-    elif not verify_password(admin_pw, existing_admin["password_hash"]):
-        await db.users.update_one({"email": admin_email}, {"$set": {"password_hash": hash_password(admin_pw)}})
+    else:
+        admin_update = {"is_admin": True, "role": "PIT BOSS", "title": "TRACK MARSHAL"}
+        if not verify_password(admin_pw, existing_admin["password_hash"]):
+            admin_update["password_hash"] = hash_password(admin_pw)
+        await db.users.update_one({"email": admin_email}, {"$set": admin_update})
 
 @app.on_event("startup")
 async def on_startup():
