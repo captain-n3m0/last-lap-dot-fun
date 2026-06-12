@@ -11,6 +11,8 @@ import Profile from "./pages/Profile";
 import AdminDashboard from "./pages/AdminDashboard";
 import XOAuthCallback from "./pages/XOAuthCallback";
 import LoadingScreen from "./components/LoadingScreen";
+import CustomCursor from "./components/CustomCursor";
+import ScrollAnimations from "./components/ScrollAnimations";
 import { Toaster } from "sonner";
 
 function Protected({ children }) {
@@ -34,6 +36,8 @@ export default function App() {
     <div className="App">
       <AuthProvider>
         <BrowserRouter>
+          <CustomCursor />
+          <ScrollAnimations />
           <Toaster position="bottom-right" theme="dark" toastOptions={{ style: { background: "#15151D", border: "1px solid #2A2A36", color: "#F5F5F7", fontFamily: "VT323, monospace", fontSize: "16px" } }} />
           <Routes>
             <Route path="/login" element={<RedirectIfAuth><Login /></RedirectIfAuth>} />
