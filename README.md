@@ -52,13 +52,16 @@ cp backend/.env.example backend/.env
 #   ADMIN_EMAIL=<your admin email>
 #   ADMIN_PASSWORD=<a strong password>
 #   FRONTEND_PUBLIC_URL=https://yourdomain.com
+#   X_CONSUMER_KEY=<your X Consumer Key / API Key>          # OAuth 1.0a
+#   X_CONSUMER_SECRET=<your X Consumer Secret / API Secret> # OAuth 1.0a
+#   # Or use OAuth 2.0 credentials instead:
 #   X_OAUTH_CLIENT_ID=<your X OAuth 2.0 client ID>
 #   X_OAUTH_CLIENT_SECRET=<your X OAuth 2.0 client secret>
 #   X_OAUTH_REDIRECT_URI=https://yourdomain.com/oauth/x/callback
 #   X_OAUTH_SCOPES=tweet.read users.read offline.access
 ```
 
-In the X Developer Portal, enable OAuth 2.0 and add the exact callback URL:
+In the X Developer Portal, enable user authentication and add the exact callback URL:
 
 ```text
 https://yourdomain.com/oauth/x/callback
@@ -183,7 +186,7 @@ come from real data in your database.
 - [ ] `ADMIN_PASSWORD` — change from the example values
 - [ ] `RESEND_API_KEY` / `EMAIL_FROM` — required for OTP email delivery
 - [ ] `CORS_ORIGINS` — set to your real domain (not `*`)
-- [ ] `X_OAUTH_CLIENT_ID` / `X_OAUTH_CLIENT_SECRET` / `X_OAUTH_REDIRECT_URI` — required for X login
+- [ ] `X_CONSUMER_KEY` / `X_CONSUMER_SECRET` or `X_OAUTH_CLIENT_ID` / `X_OAUTH_CLIENT_SECRET`, plus `X_OAUTH_REDIRECT_URI` — required for X login
 - [ ] MongoDB Atlas IP allowlist — restrict to your server's IP
 
 ---

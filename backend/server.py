@@ -13,18 +13,27 @@ import re
 import base64
 import hashlib
 import secrets
-from urllib.parse import urlencode, urlparse
+from urllib.parse import parse_qsl, urlencode, urlparse
 from datetime import datetime, timezone, timedelta
 from typing import List, Optional, Union
 
 import bcrypt
 import jwt
 import requests
+from requests_oauthlib import OAuth1
 from fastapi import FastAPI, APIRouter, HTTPException, Depends, Request, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 from pydantic import BaseModel, Field, EmailStr
+
+
+def _env_first(*names: str, default: str = "") -> str:
+    for name in names:
+        value = os.environ.get(name)
+        if value:
+            return value
+    return default
 
 
 # --- Config ---
@@ -41,10 +50,24 @@ OTP_DEBUG = os.environ.get("OTP_DEBUG", "").lower() == "true" or not RESEND_API_
 X_OAUTH_AUTHORIZE_URL = "https://x.com/i/oauth2/authorize"
 X_OAUTH_TOKEN_URL = "https://api.x.com/2/oauth2/token"
 X_OAUTH_ME_URL = "https://api.x.com/2/users/me"
-X_OAUTH_CLIENT_ID = os.environ.get("X_OAUTH_CLIENT_ID", "")
-X_OAUTH_CLIENT_SECRET = os.environ.get("X_OAUTH_CLIENT_SECRET", "")
-X_OAUTH_REDIRECT_URI = os.environ.get("X_OAUTH_REDIRECT_URI", "")
-X_OAUTH_SCOPES = os.environ.get("X_OAUTH_SCOPES", "tweet.read users.read offline.access")
+X_OAUTH1_REQUEST_TOKEN_URL = "https://api.x.com/oauth/request_token"
+X_OAUTH1_AUTHORIZE_URL = "https://api.x.com/oauth/authorize"
+X_OAUTH1_ACCESS_TOKEN_URL = "https://api.x.com/oauth/access_token"
+X_OAUTH1_VERIFY_CREDENTIALS_URL = "https://api.x.com/1.1/account/verify_credentials.json"
+X_OAUTH_CLIENT_ID = _env_first("X_OAUTH_CLIENT_ID", "TWITTER_OAUTH_CLIENT_ID", "TWITTER_CLIENT_ID")
+X_OAUTH_CLIENT_SECRET = _env_first("X_OAUTH_CLIENT_SECRET", "TWITTER_OAUTH_CLIENT_SECRET", "TWITTER_CLIENT_SECRET")
+X_OAUTH_REDIRECT_URI = _env_first("X_OAUTH_REDIRECT_URI", "TWITTER_OAUTH_REDIRECT_URI", "TWITTER_REDIRECT_URI")
+X_OAUTH_SCOPES = _env_first("X_OAUTH_SCOPES", "TWITTER_OAUTH_SCOPES", default="tweet.read users.read offline.access")
+X_OAUTH_VERSION = _env_first("X_OAUTH_VERSION", "TWITTER_OAUTH_VERSION", default="auto").lower()
+X_CONSUMER_KEY = _env_first("X_CONSUMER_KEY", "X_API_KEY", "TWITTER_CONSUMER_KEY", "TWITTER_API_KEY")
+X_CONSUMER_SECRET = _env_first(
+    "X_CONSUMER_SECRET",
+    "X_API_SECRET",
+    "X_API_KEY_SECRET",
+    "TWITTER_CONSUMER_SECRET",
+    "TWITTER_API_SECRET",
+    "TWITTER_API_KEY_SECRET",
+)
 X_OAUTH_STATE_TTL_MINUTES = int(os.environ.get("X_OAUTH_STATE_TTL_MINUTES", "10"))
 
 mongo_url = os.environ['MONGO_URL']
@@ -154,6 +177,7 @@ def sanitize_user(user: dict) -> dict:
     user.pop("_id", None)
     user.pop("password_hash", None)
     user.pop("x_access_token", None)
+    user.pop("x_access_token_secret", None)
     user.pop("x_refresh_token", None)
     user.pop("x_token_scope", None)
     user.pop("x_token_expires_at", None)
@@ -763,8 +787,10 @@ class XOAuthStartIn(BaseModel):
 
 
 class XOAuthCallbackIn(BaseModel):
-    code: str
-    state: str
+    code: Optional[str] = None
+    state: Optional[str] = None
+    oauth_token: Optional[str] = None
+    oauth_verifier: Optional[str] = None
 
 
 def _normalize_addr(addr: str) -> str:
@@ -914,9 +940,31 @@ async def wallet_unlink(current=Depends(get_current_user)):
 
 
 # --- X / Twitter OAuth ---
+def _x_oauth_flow() -> str:
+    if X_OAUTH_VERSION in {"1", "1.0", "1.0a", "oauth1", "oauth1a"}:
+        return "oauth1"
+    if X_OAUTH_VERSION in {"2", "2.0", "oauth2"}:
+        return "oauth2"
+    if X_OAUTH_CLIENT_ID:
+        return "oauth2"
+    if X_CONSUMER_KEY and X_CONSUMER_SECRET:
+        return "oauth1"
+    return ""
+
+
 def _require_x_oauth_config() -> None:
-    if not X_OAUTH_CLIENT_ID:
-        raise HTTPException(status_code=500, detail="X OAuth is not configured")
+    flow = _x_oauth_flow()
+    if flow == "oauth2" and X_OAUTH_CLIENT_ID:
+        return
+    if flow == "oauth1" and X_CONSUMER_KEY and X_CONSUMER_SECRET:
+        return
+    raise HTTPException(
+        status_code=500,
+        detail=(
+            "X OAuth is not configured. Set X_OAUTH_CLIENT_ID for OAuth 2.0, "
+            "or X_CONSUMER_KEY and X_CONSUMER_SECRET for OAuth 1.0a."
+        ),
+    )
 
 
 def _x_token_auth_header() -> dict:
@@ -924,6 +972,14 @@ def _x_token_auth_header() -> dict:
         return {}
     raw = f"{X_OAUTH_CLIENT_ID}:{X_OAUTH_CLIENT_SECRET}".encode("utf-8")
     return {"Authorization": f"Basic {base64.b64encode(raw).decode('utf-8')}"}
+
+
+def _parse_oauth1_response(text: str) -> dict:
+    return dict(parse_qsl(text, keep_blank_values=True))
+
+
+def _oauth1_client(**kwargs) -> OAuth1:
+    return OAuth1(X_CONSUMER_KEY, client_secret=X_CONSUMER_SECRET, **kwargs)
 
 
 async def _award_referral_if_needed(referral_code: Optional[str], user: dict) -> None:
@@ -957,14 +1013,90 @@ def _x_token_fields(token_data: dict) -> dict:
     now = _utcnow()
     expires_in = token_data.get("expires_in")
     token_fields = {
-        "x_access_token": token_data.get("access_token"),
+        "x_access_token": token_data.get("access_token") or token_data.get("oauth_token"),
+        "x_access_token_secret": token_data.get("oauth_token_secret"),
         "x_refresh_token": token_data.get("refresh_token"),
         "x_token_scope": token_data.get("scope"),
+        "x_oauth_version": token_data.get("oauth_version"),
         "x_connected_at": now.isoformat(),
     }
     if expires_in:
         token_fields["x_token_expires_at"] = (now + timedelta(seconds=int(expires_in))).isoformat()
     return {k: v for k, v in token_fields.items() if v is not None}
+
+
+def _x_profile_fields(profile: dict, token_data: dict) -> dict:
+    return {
+        "x_id": str(profile["id"]),
+        "x_username": profile.get("username"),
+        "x_name": profile.get("name"),
+        "x_profile_image_url": profile.get("profile_image_url"),
+        "x_verified": profile.get("verified", False),
+        **_x_token_fields(token_data),
+    }
+
+
+def _request_x_oauth1_token(redirect_uri: str) -> dict:
+    resp = requests.post(
+        X_OAUTH1_REQUEST_TOKEN_URL,
+        auth=_oauth1_client(callback_uri=redirect_uri),
+        timeout=15,
+    )
+    if resp.status_code >= 400:
+        logger.error("X OAuth 1.0a request token failed: %s %s", resp.status_code, resp.text)
+        raise HTTPException(status_code=502, detail="X OAuth request token failed")
+    data = _parse_oauth1_response(resp.text)
+    if data.get("oauth_callback_confirmed") != "true" or not data.get("oauth_token") or not data.get("oauth_token_secret"):
+        logger.error("X OAuth 1.0a request token response was incomplete: %s", data)
+        raise HTTPException(status_code=502, detail="X OAuth request token was incomplete")
+    return data
+
+
+def _exchange_x_oauth1_verifier(oauth_verifier: str, state_doc: dict) -> dict:
+    resp = requests.post(
+        X_OAUTH1_ACCESS_TOKEN_URL,
+        auth=_oauth1_client(
+            resource_owner_key=state_doc["oauth_token"],
+            resource_owner_secret=state_doc["oauth_token_secret"],
+            verifier=oauth_verifier,
+        ),
+        timeout=15,
+    )
+    if resp.status_code >= 400:
+        logger.error("X OAuth 1.0a access token failed: %s %s", resp.status_code, resp.text)
+        raise HTTPException(status_code=502, detail="X OAuth access token exchange failed")
+    data = _parse_oauth1_response(resp.text)
+    if not data.get("oauth_token") or not data.get("oauth_token_secret"):
+        logger.error("X OAuth 1.0a access token response was incomplete: %s", data)
+        raise HTTPException(status_code=502, detail="X OAuth access token was incomplete")
+    data["oauth_version"] = "1.0a"
+    return data
+
+
+def _fetch_x_oauth1_profile(token_data: dict) -> dict:
+    resp = requests.get(
+        X_OAUTH1_VERIFY_CREDENTIALS_URL,
+        auth=_oauth1_client(
+            resource_owner_key=token_data["oauth_token"],
+            resource_owner_secret=token_data["oauth_token_secret"],
+        ),
+        params={"skip_status": "true", "include_entities": "false"},
+        timeout=15,
+    )
+    if resp.status_code >= 400:
+        logger.error("X OAuth 1.0a profile lookup failed: %s %s", resp.status_code, resp.text)
+        raise HTTPException(status_code=502, detail="X profile lookup failed")
+    data = resp.json()
+    x_id = data.get("id_str") or data.get("id")
+    if not x_id:
+        raise HTTPException(status_code=502, detail="X profile lookup returned no user")
+    return {
+        "id": str(x_id),
+        "username": data.get("screen_name"),
+        "name": data.get("name"),
+        "profile_image_url": data.get("profile_image_url_https") or data.get("profile_image_url"),
+        "verified": data.get("verified", False),
+    }
 
 
 def _exchange_x_code(code: str, state_doc: dict) -> dict:
@@ -987,7 +1119,9 @@ def _exchange_x_code(code: str, state_doc: dict) -> dict:
     if resp.status_code >= 400:
         logger.error("X OAuth token exchange failed: %s %s", resp.status_code, resp.text)
         raise HTTPException(status_code=502, detail="X OAuth token exchange failed")
-    return resp.json()
+    data = resp.json()
+    data["oauth_version"] = "2.0"
+    return data
 
 
 def _fetch_x_profile(access_token: str) -> dict:
@@ -1008,15 +1142,7 @@ def _fetch_x_profile(access_token: str) -> dict:
 
 async def _upsert_x_user(profile: dict, token_data: dict, referral_code: Optional[str]) -> dict:
     x_id = str(profile["id"])
-    token_fields = _x_token_fields(token_data)
-    profile_fields = {
-        "x_id": x_id,
-        "x_username": profile.get("username"),
-        "x_name": profile.get("name"),
-        "x_profile_image_url": profile.get("profile_image_url"),
-        "x_verified": profile.get("verified", False),
-        **token_fields,
-    }
+    profile_fields = _x_profile_fields(profile, token_data)
     existing = await db.users.find_one({"x_id": x_id}, {"_id": 0})
     if existing:
         await db.users.update_one({"id": existing["id"]}, {"$set": profile_fields})
@@ -1058,14 +1184,11 @@ async def x_oauth_start(data: XOAuthStartIn, request: Request, current=Depends(g
     _require_x_oauth_config()
     if data.mode == "link" and not current:
         raise HTTPException(status_code=401, detail="Log in before linking X")
-    state = _oauth_state()
-    code_verifier = _oauth_verifier()
     redirect_uri = _x_redirect_uri(request)
     expires_at = _utcnow() + timedelta(minutes=X_OAUTH_STATE_TTL_MINUTES)
-    await db.oauth_states.insert_one({
-        "state": state,
+
+    state_doc = {
         "provider": "x",
-        "code_verifier": code_verifier,
         "redirect_uri": redirect_uri,
         "mode": data.mode,
         "user_id": current.get("id") if current else None,
@@ -1073,6 +1196,31 @@ async def x_oauth_start(data: XOAuthStartIn, request: Request, current=Depends(g
         "used": False,
         "created_at": _utcnow().isoformat(),
         "expires_at": expires_at.isoformat(),
+    }
+
+    if _x_oauth_flow() == "oauth1":
+        request_token = _request_x_oauth1_token(redirect_uri)
+        oauth_token = request_token["oauth_token"]
+        await db.oauth_states.insert_one({
+            **state_doc,
+            "state": oauth_token,
+            "oauth_version": "1.0a",
+            "oauth_token": oauth_token,
+            "oauth_token_secret": request_token["oauth_token_secret"],
+        })
+        return {
+            "authorization_url": f"{X_OAUTH1_AUTHORIZE_URL}?{urlencode({'oauth_token': oauth_token})}",
+            "state": oauth_token,
+            "oauth_version": "1.0a",
+        }
+
+    state = _oauth_state()
+    code_verifier = _oauth_verifier()
+    await db.oauth_states.insert_one({
+        **state_doc,
+        "state": state,
+        "oauth_version": "2.0",
+        "code_verifier": code_verifier,
     })
     params = {
         "response_type": "code",
@@ -1083,13 +1231,26 @@ async def x_oauth_start(data: XOAuthStartIn, request: Request, current=Depends(g
         "code_challenge": _pkce_challenge(code_verifier),
         "code_challenge_method": "S256",
     }
-    return {"authorization_url": f"{X_OAUTH_AUTHORIZE_URL}?{urlencode(params)}", "state": state}
+    return {"authorization_url": f"{X_OAUTH_AUTHORIZE_URL}?{urlencode(params)}", "state": state, "oauth_version": "2.0"}
 
 
 @api_router.post("/auth/x/callback", response_model=TokenOut)
 async def x_oauth_callback(data: XOAuthCallbackIn):
     _require_x_oauth_config()
-    state_doc = await db.oauth_states.find_one({"state": data.state, "provider": "x", "used": False})
+
+    if data.oauth_token or data.oauth_verifier:
+        if not data.oauth_token or not data.oauth_verifier:
+            raise HTTPException(status_code=400, detail="Missing OAuth token or verifier")
+        state_doc = await db.oauth_states.find_one({
+            "oauth_token": data.oauth_token,
+            "provider": "x",
+            "used": False,
+        })
+    else:
+        if not data.code or not data.state:
+            raise HTTPException(status_code=400, detail="Missing OAuth code or state")
+        state_doc = await db.oauth_states.find_one({"state": data.state, "provider": "x", "used": False})
+
     if not state_doc:
         raise HTTPException(status_code=400, detail="Invalid OAuth state")
     expires_at = _parse_dt(state_doc.get("expires_at"))
@@ -1097,18 +1258,15 @@ async def x_oauth_callback(data: XOAuthCallbackIn):
         await db.oauth_states.update_one({"_id": state_doc["_id"]}, {"$set": {"used": True}})
         raise HTTPException(status_code=400, detail="OAuth state expired")
 
-    token_data = _exchange_x_code(data.code, state_doc)
-    profile = _fetch_x_profile(token_data["access_token"])
+    if state_doc.get("oauth_version") == "1.0a":
+        token_data = _exchange_x_oauth1_verifier(data.oauth_verifier, state_doc)
+        profile = _fetch_x_oauth1_profile(token_data)
+    else:
+        token_data = _exchange_x_code(data.code, state_doc)
+        profile = _fetch_x_profile(token_data["access_token"])
+
     x_id = str(profile["id"])
-    token_fields = _x_token_fields(token_data)
-    profile_fields = {
-        "x_id": x_id,
-        "x_username": profile.get("username"),
-        "x_name": profile.get("name"),
-        "x_profile_image_url": profile.get("profile_image_url"),
-        "x_verified": profile.get("verified", False),
-        **token_fields,
-    }
+    profile_fields = _x_profile_fields(profile, token_data)
 
     if state_doc.get("mode") == "link":
         target = await db.users.find_one({"id": state_doc.get("user_id")}, {"_id": 0})
@@ -1146,8 +1304,10 @@ async def x_oauth_unlink(current=Depends(get_current_user)):
             "x_profile_image_url": "",
             "x_verified": "",
             "x_access_token": "",
+            "x_access_token_secret": "",
             "x_refresh_token": "",
             "x_token_scope": "",
+            "x_oauth_version": "",
             "x_token_expires_at": "",
             "x_connected_at": "",
         }},

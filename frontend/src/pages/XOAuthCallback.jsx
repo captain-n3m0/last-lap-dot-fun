@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 import XLogo from "../components/XLogo";
@@ -10,23 +10,36 @@ export default function XOAuthCallback() {
   const navigate = useNavigate();
   const { refreshUser } = useAuth();
   const [error, setError] = useState("");
+  const handledCallbackRef = useRef("");
+  const callbackKey = useMemo(() => params.toString(), [params]);
 
   useEffect(() => {
     let mounted = true;
     const run = async () => {
+      if (!callbackKey || handledCallbackRef.current === callbackKey) return;
+      handledCallbackRef.current = callbackKey;
+
       const oauthError = params.get("error");
+      const denied = params.get("denied");
       const code = params.get("code");
       const state = params.get("state");
-      if (oauthError) {
-        setError(oauthError);
+      const oauthToken = params.get("oauth_token");
+      const oauthVerifier = params.get("oauth_verifier");
+      if (oauthError || denied) {
+        setError(oauthError || "X authorization was denied");
         return;
       }
-      if (!code || !state) {
-        setError("Missing OAuth code or state");
+      const payload = code && state
+        ? { code, state }
+        : oauthToken && oauthVerifier
+          ? { oauth_token: oauthToken, oauth_verifier: oauthVerifier }
+          : null;
+      if (!payload) {
+        setError("Missing OAuth callback parameters");
         return;
       }
       try {
-        const data = await completeXOAuth({ code, state });
+        const data = await completeXOAuth(payload);
         localStorage.setItem("ll_token", data.access_token);
         await refreshUser();
         toast.success(`WELCOME, @${data.user.username.toUpperCase()}`);
@@ -37,7 +50,7 @@ export default function XOAuthCallback() {
     };
     run();
     return () => { mounted = false; };
-  }, [navigate, params, refreshUser]);
+  }, [callbackKey, navigate, params, refreshUser]);
 
   return (
     <div className="min-h-screen bg-[var(--bg)] page-transition flex items-center justify-center px-5" data-testid="x-oauth-callback">

@@ -13,9 +13,9 @@ export default function About() {
           <span className="text-white">WHAT IS </span><span className="text-[var(--purple)]">LASTLAP?</span>
         </h1>
         <div className="font-mono-crt text-[18px] sm:text-[20px] text-[var(--muted)] space-y-6 leading-relaxed">
-          <p className="row-animate stagger-1">LASTLAP IS A RACING-CULTURE QUEST PLATFORM. RIDERS COMPLETE DAILY MISSIONS, EARN LAP POINTS, BUILD A CREW, AND CLIMB THE GLOBAL GRID.</p>
-          <p className="row-animate stagger-2">EVERY MISSION YOU FINISH PUSHES YOU CLOSER TO THE FRONT OF THE PACK. EVERY RIDER YOU REFER LIGHTS UP YOUR TIMING SCREEN.</p>
-          <p className="row-animate stagger-3">FINAL LAP DEFINES EVERYTHING.</p>
+          <p className="row-animate stagger-1">LastLap is a racing-inspired NFT ecosystem built on Base, where ownership goes beyond collecting and becomes a gateway to participation, rewards, and exclusive experiences.</p>
+          <p className="row-animate stagger-2">Inspired by the defining moment of every race - the final lap - LastLap is built for those who embrace competition, take calculated risks, and keep pushing forward. We're creating a community-driven ecosystem where holders play an active role in shaping the journey and unlocking future opportunities.</p>
+          <p className="row-animate stagger-3">Built on Base. Powered by ambition. Defined by the Final Lap.</p>
         </div>
         <div className="mt-12 flex flex-col sm:flex-row gap-3">
           <Link to="/" className="btn-primary-ll py-3 px-6 w-full sm:w-auto cta-pulse" data-testid="about-cta-dashboard">ENTER THE TRACK</Link>
